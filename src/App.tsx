@@ -1,0 +1,65 @@
+import { Route, Routes, useParams } from "react-router-dom";
+import { useSongs } from "./hooks/useSongs";
+import { SongbookSelectPage } from "./pages/SongbookSelectPage";
+import { AdminLoginPage } from "./pages/AdminLoginPage";
+import { AdminPage } from "./pages/AdminPage";
+import { HomePage } from "./pages/HomePage";
+import { SongDetailPage } from "./pages/SongDetailPage";
+import { SongFormPage } from "./pages/SongFormPage";
+import { SongModePage } from "./pages/SongModePage";
+import { RequireOwner } from "./components/RequireOwner";
+
+/**
+ * owner 노래책 하위 라우트들은 전부 같은 useSongs(ownerId) 결과를 공유해야
+ * 추가/수정/삭제 직후 목록이 즉시 갱신된다. 그래서 이 래퍼가 한 번만
+ * useSongs를 호출하고 하위 페이지에 songs/액션을 내려준다.
+ */
+function BookRoutes() {
+  const { ownerId } = useParams();
+  const { songs, loading, addSong, updateSong, removeSong } = useSongs(ownerId);
+
+  return (
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route
+        path="/songs/new"
+        element={
+          <RequireOwner>
+            <SongFormPage songs={songs} onAdd={addSong} onUpdate={updateSong} />
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="/songs/:id/edit"
+        element={
+          <RequireOwner>
+            <SongFormPage songs={songs} onAdd={addSong} onUpdate={updateSong} />
+          </RequireOwner>
+        }
+      />
+      <Route
+        path="/songs/:id"
+        element={<SongDetailPage songs={songs} onRemove={removeSong} />}
+      />
+      <Route
+        path="/songs/:id/sing"
+        element={<SongModePage songs={songs} loading={loading} />}
+      />
+    </Routes>
+  );
+}
+
+function App() {
+  return (
+    <div className="min-h-screen bg-[#14161F] text-[#F2F0EA]">
+      <Routes>
+        <Route path="/" element={<SongbookSelectPage />} />
+        <Route path="/admin/login" element={<AdminLoginPage />} />
+        <Route path="/admin" element={<AdminPage />} />
+        <Route path="/books/:ownerId/*" element={<BookRoutes />} />
+      </Routes>
+    </div>
+  );
+}
+
+export default App;

@@ -1,0 +1,16 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# Netlify Functions는 기본 경로로 자동 서빙되지만, 순서상 SPA 규칙보다 먼저 명시.
+[[redirects]]
+  from = "/.netlify/functions/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+# SPA 라우팅 (react-router) - 새로고침 시 404 방지
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
