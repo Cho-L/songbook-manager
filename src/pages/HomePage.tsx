@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { Plus, ChevronLeft, LogOut, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Plus, ChevronLeft, LogOut, Trash2, ListMusic, Download, Upload } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { SortOption } from "../types/song";
+import type { SortOption, SongFormInput } from "../types/song";
 import type { Profile } from "../types/user";
 import { Header } from "../components/layout/Header";
 import { SearchBar } from "../components/layout/SearchBar";
@@ -14,6 +14,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { profileRepository } from "../services/profileRepository";
 import { canManageBook } from "../utils/permissions";
+import { songsToJSON, songsToCSV, downloadTextFile, parseSongsJSON, BackupParseError } from "../utils/backup";
 import type { Song } from "../types/song";
 
 function sortSongs(
@@ -45,7 +46,7 @@ export function HomePage() {
   const { ownerId } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser, logout } = useAuth();
-  const { songs, loading, error, removeAllSongs } = useSongs(ownerId);
+  const { songs, loading, error, addSong, removeAllSongs } = useSongs(ownerId);
   // 개별 ⭐ 버튼/즐겨찾기 필터/정렬: 현재 로그인한 뷰어 기준 (기존 그대로 유지)
   const { favoriteIds } = useFavorites(currentUser?.id);
   // 노래책 상단 "즐겨찾기 N곡" 통계: 지금 보고 있는 노래책 "소유자" 기준 (뷰어와 다른 개념)
@@ -55,6 +56,8 @@ export function HomePage() {
   const [query, setQuery] = useState("");
   const [favOnly, setFavOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("recent");
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isOwner = canManageBook(currentUser, ownerId);
 
@@ -90,6 +93,47 @@ export function HomePage() {
     }
   }
 
+  function handleExportJSON() {
+    downloadTextFile(
+      `songbook-${ownerId}.json`,
+      songsToJSON(songs),
+      "application/json"
+    );
+  }
+
+  function handleExportCSV() {
+    downloadTextFile(`songbook-${ownerId}.csv`, songsToCSV(songs), "text/csv");
+  }
+
+  function handleImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const text = await file.text();
+      const parsed: SongFormInput[] = parseSongsJSON(text);
+      if (!confirm(`${parsed.length}곡을 이 노래책에 추가할까요?`)) return;
+      for (const input of parsed) {
+        await addSong(input);
+      }
+      alert(`${parsed.length}곡을 가져왔어요.`);
+    } catch (err) {
+      if (err instanceof BackupParseError) {
+        alert(err.message);
+      } else {
+        alert(err instanceof Error ? err.message : "가져오기에 실패했어요.");
+      }
+    } finally {
+      setImporting(false);
+    }
+  }
+
   return (
     <div className="max-w-md mx-auto pb-24 relative min-h-screen">
       <div className="px-5 pt-5 flex items-center justify-between">
@@ -99,14 +143,22 @@ export function HomePage() {
         >
           <ChevronLeft className="h-4 w-4" /> 노래책 선택으로
         </button>
-        {currentUser && (
+        <div className="flex items-center gap-4">
           <button
-            onClick={handleLogout}
+            onClick={() => navigate(`/books/${ownerId}/playlists`)}
             className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
           >
-            <LogOut className="h-3.5 w-3.5" /> 로그아웃
+            <ListMusic className="h-3.5 w-3.5" /> 플레이리스트
           </button>
-        )}
+          {currentUser && (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+            >
+              <LogOut className="h-3.5 w-3.5" /> 로그아웃
+            </button>
+          )}
+        </div>
       </div>
 
       <Header
@@ -151,7 +203,44 @@ export function HomePage() {
       )}
 
       {isOwner && songs.length > 0 && (
-        <div className="px-5 mt-10 pt-5 border-t border-white/[0.06]">
+        <div className="px-5 mt-8">
+          <p className="text-[11px] text-white/30 mb-2">데이터 백업</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={handleExportJSON}
+              className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:bg-white/[0.07]"
+            >
+              <Download className="h-3.5 w-3.5" /> JSON 내보내기
+            </button>
+            <button
+              type="button"
+              onClick={handleExportCSV}
+              className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:bg-white/[0.07]"
+            >
+              <Download className="h-3.5 w-3.5" /> CSV 내보내기
+            </button>
+            <button
+              type="button"
+              onClick={handleImportClick}
+              disabled={importing}
+              className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:bg-white/[0.07] disabled:opacity-50"
+            >
+              <Upload className="h-3.5 w-3.5" /> {importing ? "가져오는 중..." : "JSON 가져오기"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/json"
+              onChange={handleImportFile}
+              className="hidden"
+            />
+          </div>
+        </div>
+      )}
+
+      {isOwner && songs.length > 0 && (
+        <div className="px-5 mt-6 pt-5 border-t border-white/[0.06]">
           <button
             type="button"
             onClick={handleDeleteBook}

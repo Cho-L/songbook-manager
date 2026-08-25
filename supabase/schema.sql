@@ -211,3 +211,75 @@ create policy "songs_super_admin_delete"
     )
   );
 -- ============================================================
+
+
+-- ============================================================
+-- Phase 7 추가분 — 플레이리스트
+-- 기존 테이블/정책은 그대로 두고, 아래만 "추가로" 실행하세요.
+-- ============================================================
+
+create table if not exists public.playlists (
+  id uuid primary key default gen_random_uuid(),
+  owner_id uuid not null references public.profiles (id) on delete cascade,
+  name text not null,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.playlist_songs (
+  playlist_id uuid not null references public.playlists (id) on delete cascade,
+  song_id uuid not null references public.songs (id) on delete cascade,
+  position integer not null,
+  created_at timestamptz not null default now(),
+  primary key (playlist_id, song_id)
+);
+
+create index if not exists playlists_owner_id_idx on public.playlists (owner_id);
+create index if not exists playlist_songs_playlist_id_idx on public.playlist_songs (playlist_id);
+
+alter table public.playlists enable row level security;
+alter table public.playlist_songs enable row level security;
+
+-- 노래책처럼 플레이리스트도 공개 조회, 관리는 소유자 또는 super_admin만
+drop policy if exists "playlists_public_read" on public.playlists;
+create policy "playlists_public_read" on public.playlists for select using (true);
+
+drop policy if exists "playlists_owner_write" on public.playlists;
+create policy "playlists_owner_write" on public.playlists for all
+  to authenticated
+  using (
+    auth.uid() = owner_id
+    or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+  )
+  with check (
+    auth.uid() = owner_id
+    or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+  );
+
+drop policy if exists "playlist_songs_public_read" on public.playlist_songs;
+create policy "playlist_songs_public_read" on public.playlist_songs for select using (true);
+
+-- playlist_songs는 자신이 owner인 playlist에 한해서만 추가/삭제 가능
+drop policy if exists "playlist_songs_owner_write" on public.playlist_songs;
+create policy "playlist_songs_owner_write" on public.playlist_songs for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.playlists p
+      where p.id = playlist_songs.playlist_id
+        and (
+          p.owner_id = auth.uid()
+          or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+        )
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.playlists p
+      where p.id = playlist_songs.playlist_id
+        and (
+          p.owner_id = auth.uid()
+          or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+        )
+    )
+  );
+-- ============================================================

@@ -1,9 +1,11 @@
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Mic, Pencil, Trash2 } from "lucide-react";
+import { ChevronLeft, Mic, Pencil, Trash2, ListPlus } from "lucide-react";
 import type { Song } from "../types/song";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
+import { usePlaylists } from "../hooks/usePlaylists";
+import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
 
 interface SongDetailPageProps {
@@ -18,6 +20,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   const { favoriteIds, toggle: toggleFavorite } = useFavorites(currentUser?.id);
   const song = songs.find((s) => s.id === id);
   const isOwner = canManageBook(currentUser, ownerId);
+  const { playlists } = usePlaylists(isOwner ? ownerId : undefined);
 
   if (!song) {
     return (
@@ -47,6 +50,18 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
       return;
     }
     toggleFavorite(song!.id);
+  }
+
+  async function handleAddToPlaylist(e: React.ChangeEvent<HTMLSelectElement>) {
+    const playlistId = e.target.value;
+    e.target.value = "";
+    if (!playlistId || !song) return;
+    try {
+      await playlistRepository.addSong(playlistId, song.id);
+      alert("플레이리스트에 추가했어요.");
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "추가에 실패했어요.");
+    }
   }
 
   return (
@@ -131,6 +146,26 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
         >
           <Mic className="h-4 w-4" /> 노래 부르기 모드
         </button>
+
+        {isOwner && playlists.length > 0 && (
+          <div className="mt-3 relative">
+            <select
+              defaultValue=""
+              onChange={handleAddToPlaylist}
+              className="w-full appearance-none rounded-xl bg-white/[0.06] border border-white/10 py-2.5 pl-9 pr-3 text-[13px] text-white/70 outline-none"
+            >
+              <option value="" disabled>
+                플레이리스트에 추가...
+              </option>
+              {playlists.map((p) => (
+                <option key={p.id} value={p.id} className="bg-[#14161F]">
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <ListPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
+          </div>
+        )}
 
         {song.memo && (
           <div className="mt-5 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3.5 py-3 text-[13px] text-white/60">

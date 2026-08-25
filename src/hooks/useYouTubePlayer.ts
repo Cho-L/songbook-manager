@@ -47,25 +47,32 @@ function loadYouTubeIframeAPI(): Promise<void> {
   return apiLoadPromise;
 }
 
+const YT_STATE_ENDED = 0;
 const YT_STATE_PLAYING = 1;
 
 /**
- * 가사 자동 싱크 전용: 지정한 컨테이너에 YouTube 플레이어를 만들고
+ * 가사 자동 싱크 / 연속재생 공용: 지정한 컨테이너에 YouTube 플레이어를 만들고
  * 재생 중일 때만 현재 재생시간을 폴링해서 반환한다.
  * (일시정지/버퍼링/종료 등 재생 중이 아닐 때는 폴링을 멈추고, 그 순간의
  * 시간을 한 번만 반영한다 — seek 직후에도 값이 갱신되도록.)
  *
- * enabled가 false면 플레이어 자체를 만들지 않는다 — 타임스탬프 가사가
- * 없는 곡은 기존 정적 iframe을 그대로 쓰고 이 훅을 아예 활성화하지 않는다.
+ * enabled가 false면 플레이어 자체를 만들지 않는다 — 타임스탬프 가사도
+ * 없고 연속재생 중도 아닌 곡은 기존 정적 iframe을 그대로 쓰고 이 훅을
+ * 아예 활성화하지 않는다.
+ *
+ * onEnded는 영상이 끝났을 때 한 번 호출된다 (플레이리스트 연속재생용).
  */
 export function useYouTubePlayer(
   containerId: string,
   videoId: string | undefined,
-  enabled: boolean
+  enabled: boolean,
+  onEnded?: () => void
 ): number {
   const playerRef = useRef<YTPlayer | null>(null);
   const intervalRef = useRef<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
 
   useEffect(() => {
     if (!enabled || !videoId) return;
@@ -92,6 +99,9 @@ export function useYouTubePlayer(
               // 일시정지/버퍼링(=seek 중)/종료 등: 그 순간 시간을 한 번만 반영
               const t = playerRef.current?.getCurrentTime();
               if (typeof t === "number") setCurrentTime(t);
+              if (e.data === YT_STATE_ENDED) {
+                onEndedRef.current?.();
+              }
             }
           },
         },
