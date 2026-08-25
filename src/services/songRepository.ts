@@ -16,6 +16,8 @@ export interface SongRepository {
   update(id: string, input: SongFormInput): Promise<Song | null>;
   toggleFavorite(id: string): Promise<Song | null>;
   remove(id: string): Promise<void>;
+  /** "노래책 삭제": 계정/프로필은 그대로 두고 이 소유자의 songs만 전부 삭제한다. */
+  removeAllByOwner(ownerId: string): Promise<void>;
 }
 
 function generateId(): string {
@@ -102,6 +104,11 @@ export class LocalSongRepository implements SongRepository {
 
   async remove(id: string): Promise<void> {
     const songs = this.ensureSeeded().filter((s) => s.id !== id);
+    this.writeRaw(songs);
+  }
+
+  async removeAllByOwner(ownerId: string): Promise<void> {
+    const songs = this.ensureSeeded().filter((s) => s.ownerId !== ownerId);
     this.writeRaw(songs);
   }
 }
@@ -243,6 +250,18 @@ export class SupabaseSongRepository implements SongRepository {
 
   async remove(id: string): Promise<void> {
     const { error } = await this.client().from("songs").delete().eq("id", id);
+    if (error) throw error;
+  }
+
+  /**
+   * "노래책 삭제": ownerId의 songs를 전부 지운다.
+   * 실제 권한 검사는 이 코드가 아니라 RLS(songs_owner_delete /
+   * songs_super_admin_delete)가 한다 — 본인 소유이거나 super_admin이
+   * 아니면 이 delete 자체가 0건 삭제로 조용히 실패한다.
+   * favorites는 songs.id에 대한 FK ON DELETE CASCADE로 자동 정리된다.
+   */
+  async removeAllByOwner(ownerId: string): Promise<void> {
+    const { error } = await this.client().from("songs").delete().eq("owner_id", ownerId);
     if (error) throw error;
   }
 }

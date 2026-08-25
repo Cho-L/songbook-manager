@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
-import { ChevronLeft } from "lucide-react";
+import { ChevronLeft, Trash2 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { isSuperAdmin } from "../utils/permissions";
 import { profileRepository } from "../services/profileRepository";
@@ -18,6 +18,7 @@ export function AdminPage() {
   const [rows, setRows] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isSuperAdmin(currentUser)) return;
@@ -44,6 +45,25 @@ export function AdminPage() {
       active = false;
     };
   }, [currentUser]);
+
+  async function handleDeleteBook(row: UserRow) {
+    const confirmed = confirm(
+      `"${row.profile.name}"의 노래책을 삭제하시겠습니까?\n\n등록된 ${row.songCount}곡이 모두 삭제됩니다.\n계정 자체는 삭제되지 않으며, 이 작업은 되돌릴 수 없습니다.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(row.profile.id);
+    try {
+      await songRepository.removeAllByOwner(row.profile.id);
+      setRows((prev) =>
+        prev.map((r) => (r.profile.id === row.profile.id ? { ...r, songCount: 0 } : r))
+      );
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "노래책 삭제에 실패했어요.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
 
   if (authLoading) {
     return (
@@ -74,25 +94,51 @@ export function AdminPage() {
 
       {!loading && !error && (
         <div className="mt-6 flex flex-col gap-2">
-          {rows.map(({ profile, songCount }) => (
-            <button
-              key={profile.id}
-              onClick={() => navigate(`/books/${profile.id}`)}
-              className="text-left rounded-xl bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] px-4 py-3.5 flex items-center justify-between"
+          {rows.map((row) => (
+            <div
+              key={row.profile.id}
+              className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3.5"
             >
-              <div>
-                <div className="text-[15px] font-medium flex items-center gap-1.5">
-                  {profile.name}
-                  {profile.role === "super_admin" && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300">
-                      super admin
-                    </span>
-                  )}
+              <div className="flex items-center justify-between">
+                <div className="min-w-0">
+                  <div className="text-[15px] font-medium flex items-center gap-1.5">
+                    <span className="truncate">{row.profile.name}</span>
+                    {row.profile.role === "super_admin" && (
+                      <span className="shrink-0 text-[10px] px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300">
+                        super admin
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[12.5px] text-white/40 mt-0.5 truncate">
+                    {row.profile.email}
+                  </div>
                 </div>
-                <div className="text-[12.5px] text-white/40 mt-0.5">{profile.email}</div>
+                <span className="text-[13px] text-white/50 shrink-0 ml-3">
+                  노래 {row.songCount}곡
+                </span>
               </div>
-              <span className="text-[13px] text-white/50 shrink-0">노래 {songCount}곡</span>
-            </button>
+
+              <div className="flex items-center gap-3 mt-3 pt-3 border-t border-white/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/books/${row.profile.id}`)}
+                  className="text-[12.5px] text-amber-300 hover:text-amber-200"
+                >
+                  노래책 보기
+                </button>
+                {row.songCount > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteBook(row)}
+                    disabled={deletingId === row.profile.id}
+                    className="flex items-center gap-1 text-[12.5px] text-red-400/70 hover:text-red-400 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    {deletingId === row.profile.id ? "삭제 중..." : "노래책 삭제"}
+                  </button>
+                )}
+              </div>
+            </div>
           ))}
         </div>
       )}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Plus, ChevronLeft, LogOut } from "lucide-react";
+import { Plus, ChevronLeft, LogOut, Trash2 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { SortOption } from "../types/song";
 import type { Profile } from "../types/user";
@@ -45,7 +45,7 @@ export function HomePage() {
   const { ownerId } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser, logout } = useAuth();
-  const { songs, loading, error } = useSongs(ownerId);
+  const { songs, loading, error, removeAllSongs } = useSongs(ownerId);
   // 개별 ⭐ 버튼/즐겨찾기 필터/정렬: 현재 로그인한 뷰어 기준 (기존 그대로 유지)
   const { favoriteIds } = useFavorites(currentUser?.id);
   // 노래책 상단 "즐겨찾기 N곡" 통계: 지금 보고 있는 노래책 "소유자" 기준 (뷰어와 다른 개념)
@@ -76,6 +76,18 @@ export function HomePage() {
   async function handleLogout() {
     await logout();
     navigate("/");
+  }
+
+  async function handleDeleteBook() {
+    const confirmed = confirm(
+      `노래책을 삭제하시겠습니까?\n\n현재 등록된 ${songs.length}곡이 모두 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`
+    );
+    if (!confirmed) return;
+    try {
+      await removeAllSongs();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "노래책 삭제에 실패했어요.");
+    }
   }
 
   return (
@@ -117,7 +129,14 @@ export function HomePage() {
       {error && <p className="px-5 text-red-400 text-sm mt-6">{error}</p>}
 
       {!loading && !error && filtered.length === 0 ? (
-        <EmptyState query={emptyQueryLabel} />
+        <EmptyState
+          query={songs.length > 0 ? emptyQueryLabel : ""}
+          onAddClick={
+            songs.length === 0 && isOwner
+              ? () => navigate(`/books/${ownerId}/songs/new`)
+              : undefined
+          }
+        />
       ) : (
         <div className="px-5 flex flex-col gap-2 mt-1">
           {filtered.map((song) => (
@@ -128,6 +147,18 @@ export function HomePage() {
               onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
             />
           ))}
+        </div>
+      )}
+
+      {isOwner && songs.length > 0 && (
+        <div className="px-5 mt-10 pt-5 border-t border-white/[0.06]">
+          <button
+            type="button"
+            onClick={handleDeleteBook}
+            className="flex items-center gap-1.5 text-[12.5px] text-red-400/70 hover:text-red-400"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> 노래책 삭제
+          </button>
         </div>
       )}
 

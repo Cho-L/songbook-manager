@@ -18,7 +18,7 @@ function youtubeSearchDevMiddleware() {
     name: 'youtube-search-dev-middleware',
     apply: 'serve' as const,
     configureServer(server: import('vite').ViteDevServer) {
-      server.middlewares.use('/.netlify/functions/youtube-search', async (req, res) => {
+      server.middlewares.use('/api/youtube-search', async (req, res) => {
         const apiKey = process.env.YOUTUBE_API_KEY
 
         const sendJson = (statusCode: number, payload: unknown) => {

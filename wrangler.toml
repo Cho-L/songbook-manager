@@ -1,0 +1,17 @@
+name = "songbook-manager"
+main = "workers/worker.js"
+compatibility_date = "2025-01-01"
+
+# Vite가 빌드한 정적 파일을 서빙한다. `npm run build`를 먼저 실행해서
+# dist/ 가 있어야 한다 (Cloudflare 대시보드에서 빌드 명령을 "npm run build",
+# 빌드 출력 디렉터리를 "dist"로 설정해두면 배포 시 자동으로 실행된다).
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+# YOUTUBE_API_KEY, VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY는
+# 여기에 평문으로 적지 않는다. Cloudflare 대시보드의 환경변수(Variables and Secrets)
+# 또는 `wrangler secret put YOUTUBE_API_KEY`로 설정한다.
+# (VITE_ 접두사 변수들은 빌드 시점에 이미 프론트 번들에 들어가므로 Worker
+#  런타임에는 필요 없다 — 빌드 환경변수로만 설정하면 된다.)

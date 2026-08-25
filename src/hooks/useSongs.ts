@@ -58,6 +58,13 @@ export function useSongs(ownerId: string | undefined) {
     setSongs((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  /** "노래책 삭제": 계정은 그대로, songs만 전부 비운다. */
+  const removeAllSongs = useCallback(async () => {
+    if (!ownerId) throw new Error("대상 노래책이 없어요.");
+    await songRepository.removeAllByOwner(ownerId);
+    setSongs([]);
+  }, [ownerId]);
+
   const toggleFavorite = useCallback(async (id: string) => {
     const updated = await songRepository.toggleFavorite(id);
     if (updated) {
@@ -72,6 +79,7 @@ export function useSongs(ownerId: string | undefined) {
     addSong,
     updateSong,
     removeSong,
+    removeAllSongs,
     toggleFavorite,
     reload,
   };

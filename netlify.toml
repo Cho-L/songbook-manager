@@ -9,6 +9,14 @@
   to = "/.netlify/functions/:splat"
   status = 200
 
+# Phase 6-B: 프론트가 플랫폼 공통 경로(/api/youtube-search)를 호출하므로,
+# 기존 Netlify Function(netlify/functions/youtube-search.js)은 그대로 두고
+# 이 경로만 그쪽으로 연결한다.
+[[redirects]]
+  from = "/api/youtube-search"
+  to = "/.netlify/functions/youtube-search"
+  status = 200
+
 # SPA 라우팅 (react-router) - 새로고침 시 404 방지
 [[redirects]]
   from = "/*"
