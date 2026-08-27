@@ -24,7 +24,7 @@ const PAGE_SIZE_OPTIONS: PageSize[] = [20, 30, 50];
 export function SettingsPage() {
   const navigate = useNavigate();
   const { profile: currentUser } = useAuth();
-  const { preferences, update } = usePreferences(currentUser?.id);
+  const { preferences, error, update } = usePreferences(currentUser?.id);
 
   if (!currentUser) {
     return (
@@ -50,6 +50,12 @@ export function SettingsPage() {
       <p className="text-white/40 text-[13px] mt-1.5">
         이 설정은 이 계정에만 적용되고, 다른 사용자에게는 영향을 주지 않아요.
       </p>
+
+      {error && (
+        <p className="text-[13px] text-red-400 mt-3">
+          {error} — 값은 화면에만 보이고 저장은 안 됐을 수 있어요.
+        </p>
+      )}
 
       <div className="mt-6 flex flex-col gap-5">
         <div>

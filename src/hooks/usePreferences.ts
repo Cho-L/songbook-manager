@@ -5,6 +5,7 @@ import { DEFAULT_PREFERENCES, type UserPreferences } from "../types/preferences"
 export function usePreferences(userId: string | undefined) {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_PREFERENCES);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!userId) {
@@ -14,10 +15,17 @@ export function usePreferences(userId: string | undefined) {
     }
     let active = true;
     setLoading(true);
+    setError(null);
     preferencesRepository
       .get(userId)
       .then((p) => {
         if (active) setPreferences(p);
+      })
+      .catch((e) => {
+        console.error("설정 불러오기 실패:", e);
+        if (active) {
+          setError(e instanceof Error ? e.message : "설정을 불러오지 못했어요.");
+        }
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -35,12 +43,15 @@ export function usePreferences(userId: string | undefined) {
       try {
         const saved = await preferencesRepository.update(userId, patch);
         setPreferences(saved);
-      } catch {
-        // 저장 실패해도 화면 표시는 유지 — 다음 방문 때 기본값으로 되돌아갈 수 있음을 감수
+        setError(null);
+      } catch (e) {
+        // 저장 실패는 더 이상 조용히 넘어가지 않는다 — 콘솔 + 화면에 남긴다.
+        console.error("설정 저장 실패:", e);
+        setError(e instanceof Error ? e.message : "설정 저장에 실패했어요.");
       }
     },
     [userId]
   );
 
-  return { preferences, loading, update };
+  return { preferences, loading, error, update };
 }

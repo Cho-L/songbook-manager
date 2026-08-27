@@ -32,6 +32,13 @@ interface SongModePageProps {
 const FONT_SIZE_ORDER = ["sm", "md", "lg", "xl"] as const;
 const LYRICS_SCALE_CLASS = ["text-base", "text-lg", "text-xl", "text-2xl"];
 const CHORDS_SCALE_CLASS = ["text-sm", "text-base", "text-lg", "text-xl"];
+// 코드는 정렬이 중요해서 폰트 설정과 무관하게 항상 고정폭(font-mono)을 쓴다.
+// 가사만 사용자가 고른 폰트를 반영한다.
+const LYRICS_FONT_FAMILY_CLASS: Record<string, string> = {
+  system: "",
+  serif: "font-serif",
+  mono: "font-mono",
+};
 
 function clampIndex(i: number): number {
   return Math.max(0, Math.min(FONT_SIZE_ORDER.length - 1, i));
@@ -308,7 +315,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
 
         {lyricLines.length > 0 ? (
           <div
-            className={`leading-[2.1] max-w-xl mx-auto ${LYRICS_SCALE_CLASS[lyricsIndex]}`}
+            className={`leading-[2.1] max-w-xl mx-auto ${LYRICS_SCALE_CLASS[lyricsIndex]} ${LYRICS_FONT_FAMILY_CLASS[preferences.fontFamily] ?? ""}`}
             style={{ color: preferences.lyricsColor }}
           >
             {lyricLines.map((line, i) => {
