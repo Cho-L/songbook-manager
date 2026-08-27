@@ -62,5 +62,33 @@ export function useFavorites(userId: string | undefined) {
     [userId, favoriteIds, loading]
   );
 
-  return { favoriteIds, loading, toggle };
+  const setMany = useCallback(
+    async (songIds: string[], value: boolean) => {
+      if (!userId) return { succeeded: 0, failed: 0 };
+      let succeeded = 0;
+      let failed = 0;
+      for (const songId of songIds) {
+        try {
+          if (value) {
+            await favoriteRepository.add(userId, songId);
+          } else {
+            await favoriteRepository.remove(userId, songId);
+          }
+          succeeded++;
+        } catch (e) {
+          console.error("즐겨찾기 일괄 변경 실패:", e);
+          failed++;
+        }
+      }
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        songIds.forEach((id) => (value ? next.add(id) : next.delete(id)));
+        return next;
+      });
+      return { succeeded, failed };
+    },
+    [userId]
+  );
+
+  return { favoriteIds, loading, toggle, setMany };
 }

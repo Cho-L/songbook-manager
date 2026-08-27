@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Check, X } from "lucide-react";
 import type { Song, SongFormInput } from "../types/song";
 import { YouTubeSearchPicker } from "../components/song/YouTubeSearchPicker";
+import { normalizeLyrics } from "../utils/lyrics";
 
 interface SongFormPageProps {
   songs: Song[];
@@ -121,7 +122,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
       key: form.key.trim() || undefined,
       bpm: form.bpm ? Number(form.bpm) : undefined,
       difficulty: form.difficulty ? Number(form.difficulty) : undefined,
-      lyrics: form.lyrics || undefined,
+      lyrics: form.lyrics ? normalizeLyrics(form.lyrics) : undefined,
       chords: form.chords || undefined,
       memo: form.memo || undefined,
       tags,

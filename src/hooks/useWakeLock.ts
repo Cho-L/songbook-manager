@@ -45,8 +45,10 @@ export function useWakeLock() {
     try {
       sentinelRef.current = await api.request("screen");
       setEnabled(true);
+      alert("화면 유지가 켜졌습니다. 노래 부르는 동안 화면이 자동으로 꺼지지 않아요.");
     } catch {
       setEnabled(false);
+      alert("화면 유지 기능을 활성화하지 못했습니다.");
     }
   }, [enabled, release]);
 

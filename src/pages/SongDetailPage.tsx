@@ -2,6 +2,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, Mic, Pencil, Trash2, ListPlus } from "lucide-react";
 import type { Song } from "../types/song";
 import { FavoriteButton } from "../components/song/FavoriteButton";
+import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylists } from "../hooks/usePlaylists";
@@ -185,9 +186,17 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
         {song.lyrics && (
           <div className="mt-5">
             <div className="text-xs text-white/40 mb-1.5">가사</div>
-            <pre className="whitespace-pre-wrap text-[14.5px] leading-[1.9] text-white/85">
-              {song.lyrics}
-            </pre>
+            <div className="text-[14.5px] leading-[1.9] text-white/85">
+              {song.lyrics.split(/\r?\n/).map((line, i) =>
+                line === "" ? (
+                  <div key={i} className="h-4" aria-hidden="true" />
+                ) : (
+                  <p key={i} className="break-words">
+                    <LinkifiedText text={line} />
+                  </p>
+                )
+              )}
+            </div>
           </div>
         )}
       </div>

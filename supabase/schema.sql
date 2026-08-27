@@ -283,3 +283,38 @@ create policy "playlist_songs_owner_write" on public.playlist_songs for all
     )
   );
 -- ============================================================
+
+
+-- ============================================================
+-- Phase 8 추가분 — 사용자별 개인화 설정
+-- 기존 테이블/정책은 그대로 두고, 아래만 "추가로" 실행하세요.
+-- ============================================================
+
+create table if not exists public.user_preferences (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  lyrics_font_size text not null default 'md' check (lyrics_font_size in ('sm','md','lg','xl')),
+  chords_font_size text not null default 'md' check (chords_font_size in ('sm','md','lg','xl')),
+  font_family text not null default 'system' check (font_family in ('system','serif','mono')),
+  lyrics_color text not null default '#f2f0ea',
+  chords_color text not null default '#6ee7b7',
+  background_color text not null default '#000000',
+  theme text not null default 'dark' check (theme in ('dark','light')),
+  page_size integer not null default 30 check (page_size in (20,30,50)),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.user_preferences enable row level security;
+
+-- 본인 설정만 조회/수정 가능 (다른 사람 설정은 완전히 비공개 — 노래책과 달리 공개 조회 아님)
+drop policy if exists "user_preferences_owner_all" on public.user_preferences;
+create policy "user_preferences_owner_all"
+  on public.user_preferences for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop trigger if exists user_preferences_set_updated_at on public.user_preferences;
+create trigger user_preferences_set_updated_at
+  before update on public.user_preferences
+  for each row execute procedure public.set_updated_at();
+-- ============================================================

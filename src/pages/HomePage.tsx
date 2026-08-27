@@ -1,7 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Plus, ChevronLeft, LogOut, Trash2, ListMusic, Download, Upload } from "lucide-react";
+import {
+  Plus,
+  ChevronLeft,
+  LogOut,
+  Trash2,
+  ListMusic,
+  Download,
+  Upload,
+  Settings,
+  CheckSquare,
+  X,
+  Star,
+  StarOff,
+  ListPlus,
+} from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
-import type { SortOption, SongFormInput } from "../types/song";
+import type { SortOption } from "../types/song";
 import type { Profile } from "../types/user";
 import { Header } from "../components/layout/Header";
 import { SearchBar } from "../components/layout/SearchBar";
@@ -12,16 +26,23 @@ import { searchSongs } from "../utils/search";
 import { useSongs } from "../hooks/useSongs";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
+import { usePreferences } from "../hooks/usePreferences";
+import { usePlaylists } from "../hooks/usePlaylists";
 import { profileRepository } from "../services/profileRepository";
+import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
-import { songsToJSON, songsToCSV, downloadTextFile, parseSongsJSON, BackupParseError } from "../utils/backup";
+import {
+  songsToJSON,
+  songsToCSV,
+  downloadTextFile,
+  parseSongsJSON,
+  parseSongsCSV,
+  BackupParseError,
+  type ImportResult,
+} from "../utils/backup";
 import type { Song } from "../types/song";
 
-function sortSongs(
-  songs: Song[],
-  sortBy: SortOption,
-  favoriteIds: Set<string>
-): Song[] {
+function sortSongs(songs: Song[], sortBy: SortOption, favoriteIds: Set<string>): Song[] {
   const sorted = [...songs];
   switch (sortBy) {
     case "title":
@@ -46,18 +67,27 @@ export function HomePage() {
   const { ownerId } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser, logout } = useAuth();
-  const { songs, loading, error, addSong, removeAllSongs } = useSongs(ownerId);
-  // 개별 ⭐ 버튼/즐겨찾기 필터/정렬: 현재 로그인한 뷰어 기준 (기존 그대로 유지)
-  const { favoriteIds } = useFavorites(currentUser?.id);
-  // 노래책 상단 "즐겨찾기 N곡" 통계: 지금 보고 있는 노래책 "소유자" 기준 (뷰어와 다른 개념)
+  const { songs, loading, error, addSong, removeManySongs, removeAllSongs, reload } =
+    useSongs(ownerId);
+  const { favoriteIds, setMany: setManyFavorites } = useFavorites(currentUser?.id);
   const { favoriteIds: ownerFavoriteIds } = useFavorites(ownerId);
+  const { preferences } = usePreferences(currentUser?.id);
+  const { playlists } = usePlaylists(ownerId);
 
   const [bookOwner, setBookOwner] = useState<Profile | null>(null);
   const [query, setQuery] = useState("");
   const [favOnly, setFavOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>("recent");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(30);
+
   const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState<ImportResult | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showPlaylistPicker, setShowPlaylistPicker] = useState(false);
 
   const isOwner = canManageBook(currentUser, ownerId);
 
@@ -66,6 +96,10 @@ export function HomePage() {
     profileRepository.getById(ownerId).then(setBookOwner);
   }, [ownerId]);
 
+  useEffect(() => {
+    setPageSize(preferences.pageSize);
+  }, [preferences.pageSize]);
+
   const favoriteCount = songs.filter((s) => ownerFavoriteIds.has(s.id)).length;
 
   const filtered = useMemo(() => {
@@ -73,6 +107,23 @@ export function HomePage() {
     const searched = searchSongs(base, query);
     return sortSongs(searched, sortBy, favoriteIds);
   }, [songs, query, favOnly, sortBy, favoriteIds]);
+
+  useEffect(() => {
+    setPage(1);
+    setSelectedIds(new Set());
+  }, [query, favOnly, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const paginated = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const validIds = new Set(songs.map((s) => s.id));
+      const next = new Set([...prev].filter((id) => validIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [songs]);
 
   const emptyQueryLabel = query || (favOnly ? "즐겨찾기" : "");
 
@@ -94,11 +145,7 @@ export function HomePage() {
   }
 
   function handleExportJSON() {
-    downloadTextFile(
-      `songbook-${ownerId}.json`,
-      songsToJSON(songs),
-      "application/json"
-    );
+    downloadTextFile(`songbook-${ownerId}.json`, songsToJSON(songs), "application/json");
   }
 
   function handleExportCSV() {
@@ -117,22 +164,131 @@ export function HomePage() {
     setImporting(true);
     try {
       const text = await file.text();
-      const parsed: SongFormInput[] = parseSongsJSON(text);
-      if (!confirm(`${parsed.length}곡을 이 노래책에 추가할까요?`)) return;
-      for (const input of parsed) {
-        await addSong(input);
-      }
-      alert(`${parsed.length}곡을 가져왔어요.`);
+      const isCSV = file.name.toLowerCase().endsWith(".csv");
+      const result = isCSV ? parseSongsCSV(text) : parseSongsJSON(text);
+      setImportPreview(result);
     } catch (err) {
       if (err instanceof BackupParseError) {
         alert(err.message);
       } else {
-        alert(err instanceof Error ? err.message : "가져오기에 실패했어요.");
+        alert(err instanceof Error ? err.message : "파일을 읽는 데 실패했어요.");
       }
     } finally {
       setImporting(false);
     }
   }
+
+  async function confirmImport() {
+    if (!importPreview) return;
+    const toImport = importPreview.valid;
+    setImporting(true);
+    let succeeded = 0;
+    try {
+      for (const input of toImport) {
+        await addSong(input);
+        succeeded++;
+      }
+      await reload();
+      alert(`${succeeded}곡을 가져왔어요.`);
+    } catch (err) {
+      alert(
+        `${succeeded}/${toImport.length}곡까지 가져온 뒤 실패했어요: ${
+          err instanceof Error ? err.message : "알 수 없는 오류"
+        }`
+      );
+      await reload();
+    } finally {
+      setImporting(false);
+      setImportPreview(null);
+    }
+  }
+
+  function toggleSelectionMode() {
+    setSelectionMode((v) => !v);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }
+
+  function selectAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      paginated.forEach((s) => next.add(s.id));
+      return next;
+    });
+  }
+
+  function deselectAllOnPage() {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      paginated.forEach((s) => next.delete(s.id));
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (!confirm(`선택한 ${ids.length}곡을 삭제하시겠습니까?`)) return;
+    const result = await removeManySongs(ids);
+    setSelectedIds(new Set());
+    if (result.failed > 0) {
+      alert(`${ids.length}곡 중 ${result.succeeded}곡 삭제 완료, ${result.failed}곡은 실패했어요.`);
+    } else {
+      alert(`${result.succeeded}곡을 삭제했어요.`);
+    }
+  }
+
+  async function handleBulkFavorite(value: boolean) {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    if (!currentUser) {
+      alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+      return;
+    }
+    const result = await setManyFavorites(ids, value);
+    if (result.failed > 0) {
+      alert(
+        `${ids.length}곡 중 ${result.succeeded}곡 ${value ? "추가" : "해제"} 완료, ${result.failed}곡은 실패했어요.`
+      );
+    } else {
+      alert(`${result.succeeded}곡 즐겨찾기 ${value ? "추가" : "해제"} 완료.`);
+    }
+  }
+
+  async function handleBulkAddToPlaylist(playlistId: string) {
+    const ids = [...selectedIds];
+    if (ids.length === 0) return;
+    let succeeded = 0;
+    let failed = 0;
+    for (const songId of ids) {
+      try {
+        await playlistRepository.addSong(playlistId, songId);
+        succeeded++;
+      } catch (e) {
+        console.error("플레이리스트 추가 실패:", e);
+        failed++;
+      }
+    }
+    setShowPlaylistPicker(false);
+    if (failed > 0) {
+      alert(`${ids.length}곡 중 ${succeeded}곡 추가 완료, ${failed}곡은 실패했어요.`);
+    } else {
+      alert(`${succeeded}곡을 플레이리스트에 추가했어요.`);
+    }
+  }
+
+  const selectedCount = selectedIds.size;
 
   return (
     <div className="max-w-md mx-auto pb-24 relative min-h-screen">
@@ -150,6 +306,14 @@ export function HomePage() {
           >
             <ListMusic className="h-3.5 w-3.5" /> 플레이리스트
           </button>
+          {currentUser && (
+            <button
+              onClick={() => navigate("/settings")}
+              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+            >
+              <Settings className="h-3.5 w-3.5" /> 설정
+            </button>
+          )}
           {currentUser && (
             <button
               onClick={handleLogout}
@@ -173,9 +337,82 @@ export function HomePage() {
         favOnly={favOnly}
         onToggleFavOnly={() => setFavOnly((v) => !v)}
       />
-      <div className="px-5 mt-3 mb-2 flex justify-end">
+      <div className="px-5 mt-3 mb-2 flex items-center justify-between gap-2">
+        {isOwner && songs.length > 0 ? (
+          <button
+            type="button"
+            onClick={toggleSelectionMode}
+            className={`flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full border ${
+              selectionMode
+                ? "bg-amber-400/15 border-amber-400/40 text-amber-300"
+                : "bg-white/[0.04] border-white/10 text-white/50"
+            }`}
+          >
+            {selectionMode ? <X className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}
+            {selectionMode ? "선택 취소" : "선택"}
+          </button>
+        ) : (
+          <span />
+        )}
         <SortSelect value={sortBy} onChange={setSortBy} />
       </div>
+
+      {selectionMode && (
+        <div className="px-5 mb-2 flex flex-wrap items-center gap-2 text-[12.5px]">
+          <span className="text-white/60">{selectedCount}곡 선택됨</span>
+          <button onClick={selectAllOnPage} className="text-amber-300/90 hover:text-amber-300">
+            이 페이지 전체 선택
+          </button>
+          <button onClick={deselectAllOnPage} className="text-white/40 hover:text-white/60">
+            전체 해제
+          </button>
+          {selectedCount > 0 && (
+            <div className="flex flex-wrap items-center gap-2 ml-auto">
+              <button
+                onClick={() => handleBulkFavorite(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/[0.06] border border-white/10 text-white/60"
+              >
+                <Star className="h-3.5 w-3.5" /> 즐겨찾기
+              </button>
+              <button
+                onClick={() => handleBulkFavorite(false)}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/[0.06] border border-white/10 text-white/60"
+              >
+                <StarOff className="h-3.5 w-3.5" /> 즐겨찾기 해제
+              </button>
+              {playlists.length > 0 && (
+                <div className="relative">
+                  <button
+                    onClick={() => setShowPlaylistPicker((v) => !v)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-white/[0.06] border border-white/10 text-white/60"
+                  >
+                    <ListPlus className="h-3.5 w-3.5" /> 플레이리스트
+                  </button>
+                  {showPlaylistPicker && (
+                    <div className="absolute z-10 mt-1 right-0 rounded-lg bg-[#1c1e2a] border border-white/10 py-1 min-w-[140px]">
+                      {playlists.map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => handleBulkAddToPlaylist(p.id)}
+                          className="block w-full text-left px-3 py-2 text-[12.5px] text-white/70 hover:bg-white/[0.06]"
+                        >
+                          {p.name}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={handleBulkDelete}
+                className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-red-500/10 border border-red-400/30 text-red-400"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> 삭제
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading && <p className="px-5 text-white/40 text-sm mt-6">불러오는 중...</p>}
       {error && <p className="px-5 text-red-400 text-sm mt-6">{error}</p>}
@@ -190,16 +427,43 @@ export function HomePage() {
           }
         />
       ) : (
-        <div className="px-5 flex flex-col gap-2 mt-1">
-          {filtered.map((song) => (
-            <SongListItem
-              key={song.id}
-              song={song}
-              isFavorite={favoriteIds.has(song.id)}
-              onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="px-5 flex flex-col gap-2 mt-1">
+            {paginated.map((song) => (
+              <SongListItem
+                key={song.id}
+                song={song}
+                isFavorite={favoriteIds.has(song.id)}
+                onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
+                selectionMode={selectionMode}
+                selected={selectedIds.has(song.id)}
+                onToggleSelect={() => toggleSelect(song.id)}
+              />
+            ))}
+          </div>
+
+          {totalPages > 1 && (
+            <div className="px-5 mt-4 flex items-center justify-center gap-3 text-[12.5px] text-white/50">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 disabled:opacity-30"
+              >
+                이전
+              </button>
+              <span>
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1.5 rounded-lg bg-white/[0.04] border border-white/10 disabled:opacity-30"
+              >
+                다음
+              </button>
+            </div>
+          )}
+        </>
       )}
 
       {isOwner && songs.length > 0 && (
@@ -226,12 +490,12 @@ export function HomePage() {
               disabled={importing}
               className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/10 text-white/60 hover:bg-white/[0.07] disabled:opacity-50"
             >
-              <Upload className="h-3.5 w-3.5" /> {importing ? "가져오는 중..." : "JSON 가져오기"}
+              <Upload className="h-3.5 w-3.5" /> {importing ? "확인 중..." : "JSON/CSV 가져오기"}
             </button>
             <input
               ref={fileInputRef}
               type="file"
-              accept="application/json"
+              accept="application/json,.csv,text/csv"
               onChange={handleImportFile}
               className="hidden"
             />
@@ -251,7 +515,7 @@ export function HomePage() {
         </div>
       )}
 
-      {isOwner && (
+      {isOwner && !selectionMode && (
         <button
           type="button"
           onClick={() => navigate(`/books/${ownerId}/songs/new`)}
@@ -261,6 +525,44 @@ export function HomePage() {
         >
           <Plus className="h-6 w-6" strokeWidth={2.5} />
         </button>
+      )}
+
+      {importPreview && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-2xl bg-[#14161F] border border-white/10 p-5 max-h-[80vh] overflow-y-auto">
+            <h2 className="text-[16px] font-semibold">가져오기 미리보기</h2>
+            <p className="text-[13px] text-white/60 mt-2">
+              총 {importPreview.totalRows}곡 — 정상 {importPreview.valid.length}곡, 오류{" "}
+              {importPreview.errors.length}곡
+            </p>
+
+            {importPreview.errors.length > 0 && (
+              <div className="mt-3 rounded-lg bg-red-500/5 border border-red-400/20 p-3 max-h-40 overflow-y-auto">
+                {importPreview.errors.map((e, i) => (
+                  <p key={i} className="text-[12px] text-red-400/90">
+                    {e.row}번째 행: {e.message}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => setImportPreview(null)}
+                className="flex-1 rounded-xl bg-white/[0.06] border border-white/10 text-white/70 py-2.5 text-[14px]"
+              >
+                가져오기 취소
+              </button>
+              <button
+                onClick={confirmImport}
+                disabled={importing || importPreview.valid.length === 0}
+                className="flex-1 rounded-xl bg-amber-400 text-[#14161F] font-medium py-2.5 text-[14px] disabled:opacity-40"
+              >
+                {importing ? "가져오는 중..." : `${importPreview.valid.length}곡 가져오기`}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

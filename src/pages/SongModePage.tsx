@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ChevronLeft, Music2, Minus, Plus, Eye, EyeOff, Sun, SunDim } from "lucide-react";
+import {
+  ChevronLeft,
+  Music2,
+  Minus,
+  Plus,
+  Eye,
+  EyeOff,
+  Lock,
+  LockOpen,
+  ExternalLink,
+} from "lucide-react";
 import type { Song } from "../types/song";
 import { parseLyrics, hasTimestamps, findCurrentLyricIndex } from "../utils/lyrics";
 import { transposeChordsText } from "../utils/transpose";
@@ -9,20 +19,23 @@ import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
 import { useWakeLock } from "../hooks/useWakeLock";
+import { usePreferences } from "../hooks/usePreferences";
 import { FavoriteButton } from "../components/song/FavoriteButton";
+import { LinkifiedText } from "../components/song/LinkifiedText";
 
 interface SongModePageProps {
   songs: Song[];
   loading?: boolean;
 }
 
-const FONT_SCALES = [
-  { label: "가", lyricsClass: "text-base", chordsClass: "text-sm" },
-  { label: "가", lyricsClass: "text-lg", chordsClass: "text-base" },
-  { label: "가", lyricsClass: "text-xl", chordsClass: "text-lg" },
-  { label: "가", lyricsClass: "text-2xl", chordsClass: "text-xl" },
-];
-const DEFAULT_FONT_SCALE_INDEX = 1; // 기존 text-lg와 동일한 기본값
+// index 0~3 = sm/md/lg/xl, Settings 페이지의 FontSize와 순서를 맞춘다.
+const FONT_SIZE_ORDER = ["sm", "md", "lg", "xl"] as const;
+const LYRICS_SCALE_CLASS = ["text-base", "text-lg", "text-xl", "text-2xl"];
+const CHORDS_SCALE_CLASS = ["text-sm", "text-base", "text-lg", "text-xl"];
+
+function clampIndex(i: number): number {
+  return Math.max(0, Math.min(FONT_SIZE_ORDER.length - 1, i));
+}
 
 export function SongModePage({ songs, loading }: SongModePageProps) {
   const { ownerId, id } = useParams();
@@ -34,16 +47,17 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const { favoriteIds, toggle: toggleFavorite } = useFavorites(currentUser?.id);
   const { songIds: playlistSongIds } = usePlaylistSongIds(playlistId);
   const wakeLock = useWakeLock();
+  const { preferences } = usePreferences(currentUser?.id);
 
-  const [fontScaleIndex, setFontScaleIndex] = useState(DEFAULT_FONT_SCALE_INDEX);
+  // 세션 한정 임시 조정치 (+/- 버튼). 저장된 기본값(preferences)에 상대적으로 적용되고,
+  // 이 화면을 벗어나면 사라진다 — "내 설정"에서 바꾼 기본값 자체는 건드리지 않는다.
+  const [fontStepOffset, setFontStepOffset] = useState(0);
   const [showChords, setShowChords] = useState(true);
   const [transposeSteps, setTransposeSteps] = useState(0);
 
   const lyricLines = useMemo(() => parseLyrics(song?.lyrics), [song?.lyrics]);
   const isSynced = hasTimestamps(lyricLines) && Boolean(song?.youtubeVideoId);
   const isInPlaylist = Boolean(playlistId) && playlistSongIds.length > 0;
-  // 가사 싱크 또는 플레이리스트 연속재생(영상 종료 감지) 중 하나라도 필요하면 IFrame Player API를 쓴다.
-  const usePlayerApi = isSynced || isInPlaylist;
 
   function goToNextInPlaylist() {
     if (!playlistId || !song) return;
@@ -53,10 +67,12 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   }
 
   const playerContainerId = song ? `songmode-yt-player-${song.id}` : "songmode-yt-player";
-  const currentTime = useYouTubePlayer(
+  // 영상이 있는 곡은 항상 IFrame Player API를 쓴다 — 재생 가능 여부(onError)를
+  // 감지하려면 정적 iframe이 아니라 이 방식이어야 한다. 가사 싱크/연속재생 여부와 무관.
+  const { currentTime, playbackError } = useYouTubePlayer(
     playerContainerId,
     song?.youtubeVideoId,
-    usePlayerApi,
+    Boolean(song?.youtubeVideoId),
     goToNextInPlaylist
   );
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
@@ -93,11 +109,18 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     );
   }
 
-  const fontScale = FONT_SCALES[fontScaleIndex];
+  const lyricsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.lyricsFontSize) + fontStepOffset);
+  const chordsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.chordsFontSize) + fontStepOffset);
   const displayedChords = transposeChordsText(song.chords, transposeSteps);
+  const youtubeWatchUrl = song.youtubeVideoId
+    ? `https://www.youtube.com/watch?v=${song.youtubeVideoId}`
+    : null;
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-x-hidden">
+    <div
+      className="min-h-screen text-white overflow-x-hidden"
+      style={{ backgroundColor: preferences.backgroundColor }}
+    >
       <div className="flex items-center justify-between px-5 pt-6 pb-2 gap-3">
         <button
           onClick={() =>
@@ -118,27 +141,32 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         </span>
       </div>
 
-      {/* 컨트롤 바: 글자크기 / 코드 표시·숨김 / 화면 꺼짐 방지 */}
+      {/* 컨트롤 바: 자주 쓰는 것(글자크기/코드) 먼저, 보조 기능(transpose/화면유지)은 뒤로 */}
       <div className="px-6 max-w-3xl mx-auto w-full flex flex-wrap items-center gap-2 pb-3">
-        <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1">
+        <div
+          className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1"
+          title="글자 크기 (이 화면에서만 임시로 조정, 기본값은 '내 설정'에서 변경)"
+        >
           <button
             type="button"
-            onClick={() => setFontScaleIndex((i) => Math.max(0, i - 1))}
-            disabled={fontScaleIndex === 0}
+            onClick={() => setFontStepOffset((v) => v - 1)}
+            disabled={lyricsIndex === 0}
             className="p-1.5 text-white/60 disabled:opacity-30"
             aria-label="글자 작게"
+            title="글자 작게"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <span className="text-[12px] text-white/50 px-1 w-6 text-center">
-            {fontScaleIndex + 1}
+          <span className="text-[12px] text-white/50 px-1 w-6 text-center" aria-live="polite">
+            {lyricsIndex + 1}/{FONT_SIZE_ORDER.length}
           </span>
           <button
             type="button"
-            onClick={() => setFontScaleIndex((i) => Math.min(FONT_SCALES.length - 1, i + 1))}
-            disabled={fontScaleIndex === FONT_SCALES.length - 1}
+            onClick={() => setFontStepOffset((v) => v + 1)}
+            disabled={lyricsIndex === FONT_SIZE_ORDER.length - 1}
             className="p-1.5 text-white/60 disabled:opacity-30"
             aria-label="글자 크게"
+            title="글자 크게"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
@@ -148,7 +176,13 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
           <button
             type="button"
             onClick={() => setShowChords((v) => !v)}
-            className="flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/10 text-white/60"
+            title={showChords ? "코드 숨기기" : "코드 표시하기"}
+            aria-pressed={showChords}
+            className={`flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full border ${
+              showChords
+                ? "bg-white/[0.06] border-white/10 text-white/60"
+                : "bg-white/[0.02] border-white/5 text-white/30"
+            }`}
           >
             {showChords ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
             코드
@@ -156,16 +190,20 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         )}
 
         {song.chords && (
-          <div className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1">
+          <div
+            className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1"
+            title="코드 이조 (화면 표시만 바뀌고, MR 실제 음정은 그대로예요)"
+          >
             <button
               type="button"
               onClick={() => setTransposeSteps((v) => Math.max(-6, v - 1))}
               className="p-1.5 text-white/60"
               aria-label="반키 내리기"
+              title="반키 내리기"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="text-[12px] text-white/50 px-1 w-8 text-center">
+            <span className="text-[12px] text-white/50 px-1 w-8 text-center" aria-live="polite">
               {transposeSteps > 0 ? `+${transposeSteps}` : transposeSteps}
             </span>
             <button
@@ -173,6 +211,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
               onClick={() => setTransposeSteps((v) => Math.min(6, v + 1))}
               className="p-1.5 text-white/60"
               aria-label="반키 올리기"
+              title="반키 올리기"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>
@@ -183,14 +222,24 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
           <button
             type="button"
             onClick={wakeLock.toggle}
+            aria-pressed={wakeLock.enabled}
+            title={
+              wakeLock.enabled
+                ? "화면 유지 중 — 노래 부르는 동안 화면이 꺼지지 않아요"
+                : "화면 유지 — 켜면 노래 부르는 동안 화면이 자동으로 꺼지지 않아요"
+            }
             className={`flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full border ${
               wakeLock.enabled
                 ? "bg-amber-400/15 border-amber-400/40 text-amber-300"
                 : "bg-white/[0.06] border-white/10 text-white/60"
             }`}
           >
-            {wakeLock.enabled ? <Sun className="h-3.5 w-3.5" /> : <SunDim className="h-3.5 w-3.5" />}
-            화면 유지
+            {wakeLock.enabled ? (
+              <LockOpen className="h-3.5 w-3.5" />
+            ) : (
+              <Lock className="h-3.5 w-3.5" />
+            )}
+            {wakeLock.enabled ? "화면 유지 중" : "화면 유지"}
           </button>
         )}
 
@@ -222,20 +271,26 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         <p className="text-white/40 text-sm mb-6 break-words">{song.artist}</p>
 
         {song.youtubeVideoId ? (
-          <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg overflow-hidden mb-6">
-            {usePlayerApi ? (
-              // IFrame Player API가 이 div를 실제 iframe으로 교체한다 (재생시간/종료 추적용)
+          playbackError ? (
+            <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 bg-white/[0.04] border border-white/[0.06] flex flex-col items-center justify-center text-center px-6 gap-3">
+              <p className="text-white/50 text-[13px]">
+                이 영상은 이 플레이어에서 직접 재생할 수 없어요.
+              </p>
+              <a
+                href={youtubeWatchUrl ?? undefined}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full bg-amber-400 text-[#14161F] font-medium"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> YouTube에서 열기
+              </a>
+            </div>
+          ) : (
+            <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg overflow-hidden mb-6">
+              {/* IFrame Player API가 이 div를 실제 iframe으로 교체한다 (재생시간/종료/오류 추적용) */}
               <div id={playerContainerId} className="w-full h-full" />
-            ) : (
-              <iframe
-                className="w-full h-full"
-                src={`https://www.youtube.com/embed/${song.youtubeVideoId}`}
-                title="YouTube MR"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            )}
-          </div>
+            </div>
+          )
         ) : (
           <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
             <p className="text-white/30 text-[13px]">등록된 MR 영상이 없어요</p>
@@ -244,14 +299,18 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
 
         {song.chords && showChords && (
           <pre
-            className={`whitespace-pre-wrap break-words font-mono text-emerald-300/90 mb-6 leading-relaxed max-w-xl mx-auto ${fontScale.chordsClass}`}
+            className={`whitespace-pre-wrap break-words font-mono mb-6 leading-relaxed max-w-xl mx-auto ${CHORDS_SCALE_CLASS[chordsIndex]}`}
+            style={{ color: preferences.chordsColor }}
           >
             {displayedChords}
           </pre>
         )}
 
         {lyricLines.length > 0 ? (
-          <div className={`leading-[2.1] text-white/95 max-w-xl mx-auto ${fontScale.lyricsClass}`}>
+          <div
+            className={`leading-[2.1] max-w-xl mx-auto ${LYRICS_SCALE_CLASS[lyricsIndex]}`}
+            style={{ color: preferences.lyricsColor }}
+          >
             {lyricLines.map((line, i) => {
               if (line.text === "") {
                 return <div key={i} className="h-4" aria-hidden="true" />;
@@ -274,7 +333,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
                       : ""
                   }`}
                 >
-                  {line.text}
+                  <LinkifiedText text={line.text} />
                 </p>
               );
             })}

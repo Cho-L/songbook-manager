@@ -9,6 +9,7 @@ import { SongFormPage } from "./pages/SongFormPage";
 import { SongModePage } from "./pages/SongModePage";
 import { PlaylistsPage } from "./pages/PlaylistsPage";
 import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { RequireOwner } from "./components/RequireOwner";
 
 /**
@@ -60,6 +61,7 @@ function App() {
         <Route path="/" element={<SongbookSelectPage />} />
         <Route path="/admin/login" element={<AdminLoginPage />} />
         <Route path="/admin" element={<AdminPage />} />
+        <Route path="/settings" element={<SettingsPage />} />
         <Route path="/books/:ownerId/*" element={<BookRoutes />} />
       </Routes>
     </div>

@@ -58,6 +58,23 @@ export function useSongs(ownerId: string | undefined) {
     setSongs((prev) => prev.filter((s) => s.id !== id));
   }, []);
 
+  /** 다중 선택 일괄 삭제. 실패한 곡은 결과에 개수로 알려준다. */
+  const removeManySongs = useCallback(async (ids: string[]) => {
+    let succeeded = 0;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        await songRepository.remove(id);
+        succeeded++;
+      } catch (e) {
+        console.error("일괄 삭제 실패:", e);
+        failed++;
+      }
+    }
+    setSongs((prev) => prev.filter((s) => !ids.includes(s.id)));
+    return { succeeded, failed };
+  }, []);
+
   /** "노래책 삭제": 계정은 그대로, songs만 전부 비운다. */
   const removeAllSongs = useCallback(async () => {
     if (!ownerId) throw new Error("대상 노래책이 없어요.");
@@ -79,6 +96,7 @@ export function useSongs(ownerId: string | undefined) {
     addSong,
     updateSong,
     removeSong,
+    removeManySongs,
     removeAllSongs,
     toggleFavorite,
     reload,

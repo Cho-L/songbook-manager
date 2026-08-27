@@ -8,6 +8,9 @@ interface YTPlayer {
 interface YTPlayerEvent {
   data: number;
 }
+interface YTPlayerErrorEvent {
+  data: number;
+}
 interface YTNamespace {
   Player: new (
     elementId: string,
@@ -16,6 +19,7 @@ interface YTNamespace {
       playerVars?: Record<string, number>;
       events?: {
         onStateChange?: (e: YTPlayerEvent) => void;
+        onError?: (e: YTPlayerErrorEvent) => void;
       };
     }
   ) => YTPlayer;
@@ -50,15 +54,25 @@ function loadYouTubeIframeAPI(): Promise<void> {
 const YT_STATE_ENDED = 0;
 const YT_STATE_PLAYING = 1;
 
+// https://developers.google.com/youtube/iframe_api_reference#onError
+// 2=잘못된 매개변수, 5=HTML5 플레이어 오류, 100=영상 없음/비공개,
+// 101/150=업로더가 다른 사이트에서 임베드 재생을 막아둔 경우
+const EMBED_BLOCKED_ERROR_CODES = new Set([2, 5, 100, 101, 150]);
+
+export interface YouTubePlayerState {
+  currentTime: number;
+  /** true면 이 영상은 임베드 재생이 막혀있거나 재생할 수 없는 상태 */
+  playbackError: boolean;
+}
+
 /**
- * 가사 자동 싱크 / 연속재생 공용: 지정한 컨테이너에 YouTube 플레이어를 만들고
- * 재생 중일 때만 현재 재생시간을 폴링해서 반환한다.
+ * 가사 자동 싱크 / 연속재생 / 재생 실패 감지 공용: 지정한 컨테이너에 YouTube
+ * 플레이어를 만들고 재생 중일 때만 현재 재생시간을 폴링해서 반환한다.
  * (일시정지/버퍼링/종료 등 재생 중이 아닐 때는 폴링을 멈추고, 그 순간의
  * 시간을 한 번만 반영한다 — seek 직후에도 값이 갱신되도록.)
  *
- * enabled가 false면 플레이어 자체를 만들지 않는다 — 타임스탬프 가사도
- * 없고 연속재생 중도 아닌 곡은 기존 정적 iframe을 그대로 쓰고 이 훅을
- * 아예 활성화하지 않는다.
+ * enabled가 false면 플레이어 자체를 만들지 않는다 — 영상이 아예 없는 곡은
+ * 이 훅을 활성화하지 않는다.
  *
  * onEnded는 영상이 끝났을 때 한 번 호출된다 (플레이리스트 연속재생용).
  */
@@ -67,16 +81,18 @@ export function useYouTubePlayer(
   videoId: string | undefined,
   enabled: boolean,
   onEnded?: () => void
-): number {
+): YouTubePlayerState {
   const playerRef = useRef<YTPlayer | null>(null);
   const intervalRef = useRef<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [playbackError, setPlaybackError] = useState(false);
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
 
   useEffect(() => {
     if (!enabled || !videoId) return;
     let cancelled = false;
+    setPlaybackError(false);
 
     loadYouTubeIframeAPI().then(() => {
       if (cancelled || !window.YT) return;
@@ -85,6 +101,11 @@ export function useYouTubePlayer(
         videoId,
         playerVars: { rel: 0 },
         events: {
+          onError: (e) => {
+            if (EMBED_BLOCKED_ERROR_CODES.has(e.data)) {
+              setPlaybackError(true);
+            }
+          },
           onStateChange: (e) => {
             if (intervalRef.current !== null) {
               window.clearInterval(intervalRef.current);
@@ -120,5 +141,5 @@ export function useYouTubePlayer(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, videoId, enabled]);
 
-  return currentTime;
+  return { currentTime, playbackError };
 }
