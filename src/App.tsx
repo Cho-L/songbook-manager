@@ -19,11 +19,34 @@ import { RequireOwner } from "./components/RequireOwner";
  */
 function BookRoutes() {
   const { ownerId } = useParams();
-  const { songs, loading, addSong, updateSong, removeSong } = useSongs(ownerId);
+  const {
+    songs,
+    loading,
+    error,
+    addSong,
+    updateSong,
+    removeSong,
+    removeManySongs,
+    removeAllSongs,
+    reload,
+  } = useSongs(ownerId);
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage />} />
+      <Route
+        path="/"
+        element={
+          <HomePage
+            songs={songs}
+            loading={loading}
+            error={error}
+            addSong={addSong}
+            removeManySongs={removeManySongs}
+            removeAllSongs={removeAllSongs}
+            reload={reload}
+          />
+        }
+      />
       <Route
         path="/songs/new"
         element={

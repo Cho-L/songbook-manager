@@ -53,6 +53,8 @@ function loadYouTubeIframeAPI(): Promise<void> {
 
 const YT_STATE_ENDED = 0;
 const YT_STATE_PLAYING = 1;
+const YT_STATE_BUFFERING = 3;
+const BUFFERING_HANG_TIMEOUT_MS = 8000;
 
 // https://developers.google.com/youtube/iframe_api_reference#onError
 // 2=잘못된 매개변수, 5=HTML5 플레이어 오류, 100=영상 없음/비공개,
@@ -75,6 +77,14 @@ export interface YouTubePlayerState {
  * 이 훅을 활성화하지 않는다.
  *
  * onEnded는 영상이 끝났을 때 한 번 호출된다 (플레이리스트 연속재생용).
+ *
+ * playbackError는 두 가지 경로로 감지한다:
+ * 1) YouTube가 명시적으로 onError를 쏘는 경우 (임베드 금지 등)
+ * 2) onError 없이 그냥 버퍼링 상태에서 멈춰버리는 경우 — 일부 차단된 임베드는
+ *    에러 이벤트 없이 검은 화면/무한 버�퍼링으로만 나타나서, 버퍼링 상태가
+ *    일정 시간(8초) 넘게 재생으로 못 넘어가면 재생 불가로 간주한다.
+ *    (아직 재생 버튼을 안 눌러서 대기 중인 정상 영상은 버퍼링 상태 자체에
+ *    들어가지 않으므로 이 타임아웃은 오탐이 거의 없다.)
  */
 export function useYouTubePlayer(
   containerId: string,
@@ -84,6 +94,7 @@ export function useYouTubePlayer(
 ): YouTubePlayerState {
   const playerRef = useRef<YTPlayer | null>(null);
   const intervalRef = useRef<number | null>(null);
+  const bufferingTimeoutRef = useRef<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [playbackError, setPlaybackError] = useState(false);
   const onEndedRef = useRef(onEnded);
@@ -94,6 +105,13 @@ export function useYouTubePlayer(
     let cancelled = false;
     setPlaybackError(false);
 
+    function clearBufferingTimeout() {
+      if (bufferingTimeoutRef.current !== null) {
+        window.clearTimeout(bufferingTimeoutRef.current);
+        bufferingTimeoutRef.current = null;
+      }
+    }
+
     loadYouTubeIframeAPI().then(() => {
       if (cancelled || !window.YT) return;
 
@@ -103,6 +121,7 @@ export function useYouTubePlayer(
         events: {
           onError: (e) => {
             if (EMBED_BLOCKED_ERROR_CODES.has(e.data)) {
+              clearBufferingTimeout();
               setPlaybackError(true);
             }
           },
@@ -111,6 +130,16 @@ export function useYouTubePlayer(
               window.clearInterval(intervalRef.current);
               intervalRef.current = null;
             }
+
+            if (e.data === YT_STATE_BUFFERING) {
+              clearBufferingTimeout();
+              bufferingTimeoutRef.current = window.setTimeout(() => {
+                setPlaybackError(true);
+              }, BUFFERING_HANG_TIMEOUT_MS);
+            } else {
+              clearBufferingTimeout();
+            }
+
             if (e.data === YT_STATE_PLAYING) {
               intervalRef.current = window.setInterval(() => {
                 const t = playerRef.current?.getCurrentTime();
@@ -131,6 +160,7 @@ export function useYouTubePlayer(
 
     return () => {
       cancelled = true;
+      clearBufferingTimeout();
       if (intervalRef.current !== null) {
         window.clearInterval(intervalRef.current);
         intervalRef.current = null;

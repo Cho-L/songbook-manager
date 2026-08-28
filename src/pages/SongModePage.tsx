@@ -9,7 +9,6 @@ import {
   EyeOff,
   Lock,
   LockOpen,
-  ExternalLink,
 } from "lucide-react";
 import type { Song } from "../types/song";
 import { parseLyrics, hasTimestamps, findCurrentLyricIndex } from "../utils/lyrics";
@@ -20,6 +19,7 @@ import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
 import { useWakeLock } from "../hooks/useWakeLock";
 import { usePreferences } from "../hooks/usePreferences";
+import { getChromeTones } from "../utils/color";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 
@@ -94,21 +94,37 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     });
   }, [isSynced, currentLineIndex]);
 
+  // 임베드 재생이 불가능한 영상이면 검은 화면/먹통 상태로 SongMode를 막고 있지 않고
+  // 즉시 YouTube 원본 페이지로 이동한다. (팝업이 아니라 현재 탭 이동이라 팝업 차단에
+  // 걸리지 않는다 — window.open은 사용자 클릭 없이 호출되면 대부분 차단된다.)
+  useEffect(() => {
+    if (playbackError && song?.youtubeVideoId) {
+      window.location.href = `https://www.youtube.com/watch?v=${song.youtubeVideoId}`;
+    }
+  }, [playbackError, song?.youtubeVideoId]);
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white/40 flex items-center justify-center text-sm">
+      <div
+        className="min-h-screen text-white/40 flex items-center justify-center text-sm"
+        style={{ backgroundColor: preferences.backgroundColor }}
+      >
         불러오는 중...
       </div>
     );
   }
 
   if (!song) {
+    const tones = getChromeTones(preferences.backgroundColor);
     return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center text-center px-6">
-        <p className="text-white/50 text-sm">곡을 찾을 수 없어요.</p>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center text-center px-6"
+        style={{ backgroundColor: preferences.backgroundColor }}
+      >
+        <p className={`${tones.base} text-sm`}>곡을 찾을 수 없어요.</p>
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
-          className="mt-3 text-amber-300 text-sm"
+          className="mt-3 text-amber-500 text-sm"
         >
           목록으로 돌아가기
         </button>
@@ -119,13 +135,11 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const lyricsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.lyricsFontSize) + fontStepOffset);
   const chordsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.chordsFontSize) + fontStepOffset);
   const displayedChords = transposeChordsText(song.chords, transposeSteps);
-  const youtubeWatchUrl = song.youtubeVideoId
-    ? `https://www.youtube.com/watch?v=${song.youtubeVideoId}`
-    : null;
+  const tones = getChromeTones(preferences.backgroundColor);
 
   return (
     <div
-      className="min-h-screen text-white overflow-x-hidden"
+      className="min-h-screen overflow-x-hidden"
       style={{ backgroundColor: preferences.backgroundColor }}
     >
       <div className="flex items-center justify-between px-5 pt-6 pb-2 gap-3">
@@ -137,12 +151,12 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
                 : `/books/${ownerId}/songs/${song.id}`
             )
           }
-          className="p-2 -ml-2 text-white/50 shrink-0"
+          className={`p-2 -ml-2 shrink-0 ${tones.base}`}
           aria-label="뒤로가기"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
-        <span className="text-[13px] text-white/40 shrink-0">
+        <span className={`text-[13px] shrink-0 ${tones.muted}`}>
           {song.key ? `Key ${song.key}` : ""}
           {song.bpm ? ` · ${song.bpm} BPM` : ""}
         </span>
@@ -151,27 +165,27 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
       {/* 컨트롤 바: 자주 쓰는 것(글자크기/코드) 먼저, 보조 기능(transpose/화면유지)은 뒤로 */}
       <div className="px-6 max-w-3xl mx-auto w-full flex flex-wrap items-center gap-2 pb-3">
         <div
-          className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1"
+          className={`flex items-center gap-1 rounded-full border px-1 py-1 ${tones.chipBg} ${tones.chipBorder}`}
           title="글자 크기 (이 화면에서만 임시로 조정, 기본값은 '내 설정'에서 변경)"
         >
           <button
             type="button"
             onClick={() => setFontStepOffset((v) => v - 1)}
             disabled={lyricsIndex === 0}
-            className="p-1.5 text-white/60 disabled:opacity-30"
+            className={`p-1.5 disabled:opacity-30 ${tones.base}`}
             aria-label="글자 작게"
             title="글자 작게"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <span className="text-[12px] text-white/50 px-1 w-6 text-center" aria-live="polite">
+          <span className={`text-[12px] px-1 w-6 text-center ${tones.muted}`} aria-live="polite">
             {lyricsIndex + 1}/{FONT_SIZE_ORDER.length}
           </span>
           <button
             type="button"
             onClick={() => setFontStepOffset((v) => v + 1)}
             disabled={lyricsIndex === FONT_SIZE_ORDER.length - 1}
-            className="p-1.5 text-white/60 disabled:opacity-30"
+            className={`p-1.5 disabled:opacity-30 ${tones.base}`}
             aria-label="글자 크게"
             title="글자 크게"
           >
@@ -186,9 +200,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             title={showChords ? "코드 숨기기" : "코드 표시하기"}
             aria-pressed={showChords}
             className={`flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full border ${
-              showChords
-                ? "bg-white/[0.06] border-white/10 text-white/60"
-                : "bg-white/[0.02] border-white/5 text-white/30"
+              showChords ? `${tones.chipBg} ${tones.chipBorder} ${tones.base}` : `${tones.muted} border-transparent`
             }`}
           >
             {showChords ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
@@ -198,25 +210,25 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
 
         {song.chords && (
           <div
-            className="flex items-center gap-1 rounded-full bg-white/[0.06] border border-white/10 px-1 py-1"
+            className={`flex items-center gap-1 rounded-full border px-1 py-1 ${tones.chipBg} ${tones.chipBorder}`}
             title="코드 이조 (화면 표시만 바뀌고, MR 실제 음정은 그대로예요)"
           >
             <button
               type="button"
               onClick={() => setTransposeSteps((v) => Math.max(-6, v - 1))}
-              className="p-1.5 text-white/60"
+              className={`p-1.5 ${tones.base}`}
               aria-label="반키 내리기"
               title="반키 내리기"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
-            <span className="text-[12px] text-white/50 px-1 w-8 text-center" aria-live="polite">
+            <span className={`text-[12px] px-1 w-8 text-center ${tones.muted}`} aria-live="polite">
               {transposeSteps > 0 ? `+${transposeSteps}` : transposeSteps}
             </span>
             <button
               type="button"
               onClick={() => setTransposeSteps((v) => Math.min(6, v + 1))}
-              className="p-1.5 text-white/60"
+              className={`p-1.5 ${tones.base}`}
               aria-label="반키 올리기"
               title="반키 올리기"
             >
@@ -237,8 +249,8 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             }
             className={`flex items-center gap-1.5 text-[12px] px-3 py-1.5 rounded-full border ${
               wakeLock.enabled
-                ? "bg-amber-400/15 border-amber-400/40 text-amber-300"
-                : "bg-white/[0.06] border-white/10 text-white/60"
+                ? "bg-amber-400/15 border-amber-400/40 text-amber-500"
+                : `${tones.chipBg} ${tones.chipBorder} ${tones.base}`
             }`}
           >
             {wakeLock.enabled ? (
@@ -251,7 +263,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         )}
 
         {isInPlaylist && (
-          <span className="text-[11px] text-white/30 ml-auto shrink-0">
+          <span className={`text-[11px] ml-auto shrink-0 ${tones.muted}`}>
             {playlistSongIds.indexOf(song.id) + 1} / {playlistSongIds.length}
           </span>
         )}
@@ -259,7 +271,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
 
       <div className="px-6 pt-1 pb-24 max-w-3xl mx-auto w-full">
         <div className="flex items-start justify-between gap-3 mb-1">
-          <h1 className="text-[26px] font-semibold font-serif break-words">
+          <h1 className={`text-[26px] font-semibold font-serif break-words ${tones.strong}`}>
             {song.title}
           </h1>
           <div className="shrink-0 -mt-1 -mr-2">
@@ -272,25 +284,18 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
                 }
                 toggleFavorite(song.id);
               }}
+              colorClassName={tones.base}
             />
           </div>
         </div>
-        <p className="text-white/40 text-sm mb-6 break-words">{song.artist}</p>
+        <p className={`text-sm mb-6 break-words ${tones.muted}`}>{song.artist}</p>
 
         {song.youtubeVideoId ? (
           playbackError ? (
-            <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 bg-white/[0.04] border border-white/[0.06] flex flex-col items-center justify-center text-center px-6 gap-3">
-              <p className="text-white/50 text-[13px]">
-                이 영상은 이 플레이어에서 직접 재생할 수 없어요.
-              </p>
-              <a
-                href={youtubeWatchUrl ?? undefined}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-1.5 text-[13px] px-3 py-1.5 rounded-full bg-amber-400 text-[#14161F] font-medium"
-              >
-                <ExternalLink className="h-3.5 w-3.5" /> YouTube에서 열기
-              </a>
+            <div
+              className={`aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 border flex flex-col items-center justify-center text-center px-6 gap-2 ${tones.panelBg} ${tones.panelBorder}`}
+            >
+              <p className={`text-[13px] ${tones.muted}`}>YouTube로 이동하는 중...</p>
             </div>
           ) : (
             <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg overflow-hidden mb-6">
@@ -299,8 +304,10 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             </div>
           )
         ) : (
-          <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 bg-white/[0.04] border border-white/[0.06] flex items-center justify-center">
-            <p className="text-white/30 text-[13px]">등록된 MR 영상이 없어요</p>
+          <div
+            className={`aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 border flex items-center justify-center ${tones.panelBg} ${tones.panelBorder}`}
+          >
+            <p className={`text-[13px] ${tones.muted}`}>등록된 MR 영상이 없어요</p>
           </div>
         )}
 
@@ -331,14 +338,16 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
                     lineRefs.current[i] = el;
                   }}
                   className={`break-words transition-all duration-300 ${
-                    isSynced
-                      ? isCurrent
-                        ? "text-amber-300 font-semibold scale-[1.03] origin-left"
-                        : isPast
-                          ? "text-white/45"
-                          : "text-white/60"
-                      : ""
+                    isCurrent ? "text-amber-500 font-semibold scale-[1.03] origin-left" : ""
                   }`}
+                  style={
+                    isCurrent
+                      ? undefined
+                      : // 지난/다음 줄도 사용자가 고른 lyricsColor를 그대로 쓰고
+                        // 투명도만 다르게 줘서 강조 대비를 만든다 — 하드코딩된
+                        // 흰색으로 덮어쓰지 않는다 (곡마다 색이 달라지던 버그의 원인).
+                        { color: preferences.lyricsColor, opacity: isPast ? 0.45 : isSynced ? 0.75 : 1 }
+                  }
                 >
                   <LinkifiedText text={line.text} />
                 </p>

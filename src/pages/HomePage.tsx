@@ -23,7 +23,6 @@ import { SortSelect } from "../components/layout/SortSelect";
 import { SongListItem } from "../components/song/SongListItem";
 import { EmptyState } from "../components/song/EmptyState";
 import { searchSongs } from "../utils/search";
-import { useSongs } from "../hooks/useSongs";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePreferences } from "../hooks/usePreferences";
@@ -40,7 +39,17 @@ import {
   BackupParseError,
   type ImportResult,
 } from "../utils/backup";
-import type { Song } from "../types/song";
+import type { Song, SongFormInput } from "../types/song";
+
+interface HomePageProps {
+  songs: Song[];
+  loading: boolean;
+  error: string | null;
+  addSong: (input: SongFormInput) => Promise<Song>;
+  removeManySongs: (ids: string[]) => Promise<{ succeeded: number; failed: number }>;
+  removeAllSongs: () => Promise<void>;
+  reload: () => Promise<void>;
+}
 
 function sortSongs(songs: Song[], sortBy: SortOption, favoriteIds: Set<string>): Song[] {
   const sorted = [...songs];
@@ -63,12 +72,18 @@ function sortSongs(songs: Song[], sortBy: SortOption, favoriteIds: Set<string>):
   }
 }
 
-export function HomePage() {
+export function HomePage({
+  songs,
+  loading,
+  error,
+  addSong,
+  removeManySongs,
+  removeAllSongs,
+  reload,
+}: HomePageProps) {
   const { ownerId } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser, logout } = useAuth();
-  const { songs, loading, error, addSong, removeManySongs, removeAllSongs, reload } =
-    useSongs(ownerId);
   const { favoriteIds, setMany: setManyFavorites } = useFavorites(currentUser?.id);
   const { favoriteIds: ownerFavoriteIds } = useFavorites(ownerId);
   const { preferences } = usePreferences(currentUser?.id);
