@@ -94,14 +94,20 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     });
   }, [isSynced, currentLineIndex]);
 
-  // 임베드 재생이 불가능한 영상이면 검은 화면/먹통 상태로 SongMode를 막고 있지 않고
-  // 즉시 YouTube 원본 페이지로 이동한다. (팝업이 아니라 현재 탭 이동이라 팝업 차단에
-  // 걸리지 않는다 — window.open은 사용자 클릭 없이 호출되면 대부분 차단된다.)
+  // 임베드 재생이 불가능한 영상이면 검은 화면/먹통 상태로 SongMode에 머물지 않는다.
+  // 현재 탭은 Songbook Manager에 남기고, YouTube 원본은 새 탭에서 연다.
+  // (비동기 콜백에서 호출하는 window.open은 브라우저에 따라 팝업 차단될 수 있어서,
+  //  차단됐을 경우를 대비해 화면에 수동으로 누를 수 있는 링크도 함께 보여준다.)
   useEffect(() => {
-    if (playbackError && song?.youtubeVideoId) {
-      window.location.href = `https://www.youtube.com/watch?v=${song.youtubeVideoId}`;
+    if (playbackError && song?.youtubeVideoId && ownerId) {
+      const url = `https://www.youtube.com/watch?v=${song.youtubeVideoId}`;
+      const opened = window.open(url, "_blank", "noopener,noreferrer");
+      if (opened) {
+        navigate(`/books/${ownerId}/songs/${song.id}`, { replace: true });
+      }
     }
-  }, [playbackError, song?.youtubeVideoId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playbackError, song?.youtubeVideoId, ownerId]);
 
   if (loading) {
     return (
@@ -293,9 +299,19 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         {song.youtubeVideoId ? (
           playbackError ? (
             <div
-              className={`aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 border flex flex-col items-center justify-center text-center px-6 gap-2 ${tones.panelBg} ${tones.panelBorder}`}
+              className={`aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 border flex flex-col items-center justify-center text-center px-6 gap-3 ${tones.panelBg} ${tones.panelBorder}`}
             >
-              <p className={`text-[13px] ${tones.muted}`}>YouTube로 이동하는 중...</p>
+              <p className={`text-[13px] ${tones.muted}`}>
+                이 영상은 여기서 재생할 수 없어요. 새 탭으로 안 열렸다면 아래를 눌러주세요.
+              </p>
+              <a
+                href={`https://www.youtube.com/watch?v=${song.youtubeVideoId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[13px] px-3 py-1.5 rounded-full bg-amber-500 text-black font-medium"
+              >
+                YouTube에서 열기
+              </a>
             </div>
           ) : (
             <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg overflow-hidden mb-6">

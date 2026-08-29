@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { usePreferences } from "../hooks/usePreferences";
 import type { FontFamily, FontSize, PageSize, Theme } from "../types/preferences";
+import { THEME_PRESETS } from "../types/preferences";
 
 const FONT_SIZE_OPTIONS: { value: FontSize; label: string }[] = [
   { value: "sm", label: "작게" },
@@ -108,7 +109,12 @@ export function SettingsPage() {
           <select
             className={selectCls}
             value={preferences.theme}
-            onChange={(e) => update({ theme: e.target.value as Theme })}
+            onChange={(e) => {
+              const theme = e.target.value as Theme;
+              // 테마는 배경/가사/코드 색상 프리셋을 한 번에 적용하는 트리거다.
+              // 적용 후에는 아래 색상 선택기로 각자 다시 자유롭게 바꿀 수 있다.
+              update({ theme, ...THEME_PRESETS[theme] });
+            }}
           >
             {THEME_OPTIONS.map((o) => (
               <option key={o.value} value={o.value} className="bg-[#14161F]">
@@ -116,6 +122,10 @@ export function SettingsPage() {
               </option>
             ))}
           </select>
+          <p className="text-[11px] text-white/30 mt-1.5">
+            테마를 바꾸면 아래 배경/가사/코드 색이 그 테마의 기본값으로 함께 바뀌어요. 그 다음
+            색상은 자유롭게 다시 조정할 수 있어요.
+          </p>
         </div>
 
         <div className="grid grid-cols-3 gap-3">
