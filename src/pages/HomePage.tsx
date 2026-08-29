@@ -13,6 +13,7 @@ import {
   Star,
   StarOff,
   ListPlus,
+  Palette,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { SortOption } from "../types/song";
@@ -27,6 +28,7 @@ import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePreferences } from "../hooks/usePreferences";
 import { usePlaylists } from "../hooks/usePlaylists";
+import { useBookDesign } from "../hooks/useBookDesign";
 import { profileRepository } from "../services/profileRepository";
 import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
@@ -88,6 +90,7 @@ export function HomePage({
   const { favoriteIds: ownerFavoriteIds } = useFavorites(ownerId);
   const { preferences } = usePreferences(currentUser?.id);
   const { playlists } = usePlaylists(ownerId);
+  const { design } = useBookDesign(ownerId);
 
   const [bookOwner, setBookOwner] = useState<Profile | null>(null);
   const [query, setQuery] = useState("");
@@ -306,7 +309,18 @@ export function HomePage({
   const selectedCount = selectedIds.size;
 
   return (
-    <div className="max-w-md mx-auto pb-24 relative min-h-screen">
+    <div
+      className="max-w-md mx-auto pb-24 relative min-h-screen"
+      style={
+        {
+          "--book-accent": design.accentColor,
+          "--book-background": design.backgroundColor,
+          "--book-text": design.textColor,
+          backgroundColor: design.backgroundColor,
+          color: design.textColor,
+        } as React.CSSProperties
+      }
+    >
       <div className="px-5 pt-5 flex items-center justify-between">
         <button
           onClick={() => navigate("/")}
@@ -315,6 +329,14 @@ export function HomePage({
           <ChevronLeft className="h-4 w-4" /> 노래책 선택으로
         </button>
         <div className="flex items-center gap-4">
+          {isOwner && (
+            <button
+              onClick={() => navigate(`/books/${ownerId}/design`)}
+              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+            >
+              <Palette className="h-3.5 w-3.5" /> 꾸미기
+            </button>
+          )}
           <button
             onClick={() => navigate(`/books/${ownerId}/playlists`)}
             className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
@@ -341,7 +363,8 @@ export function HomePage({
       </div>
 
       <Header
-        title={bookOwner ? `${bookOwner.name}의 노래책` : "노래책"}
+        title={design.title || (bookOwner ? `${bookOwner.name}의 노래책` : "노래책")}
+        description={design.description}
         totalCount={songs.length}
         favoriteCount={favoriteCount}
       />
@@ -453,6 +476,7 @@ export function HomePage({
                 selectionMode={selectionMode}
                 selected={selectedIds.has(song.id)}
                 onToggleSelect={() => toggleSelect(song.id)}
+                displayMode={design.songDisplay}
               />
             ))}
           </div>
@@ -535,8 +559,8 @@ export function HomePage({
           type="button"
           onClick={() => navigate(`/books/${ownerId}/songs/new`)}
           aria-label="곡 추가"
-          className="fixed bottom-20 right-5 h-14 w-14 flex items-center justify-center rounded-full bg-amber-400 text-[#14161F] shadow-lg shadow-amber-400/20 z-40"
-          style={{ maxWidth: "28rem" }}
+          className="fixed bottom-20 right-5 h-14 w-14 flex items-center justify-center rounded-full text-[#14161F] shadow-lg z-40"
+          style={{ backgroundColor: design.accentColor, maxWidth: "28rem" }}
         >
           <Plus className="h-6 w-6" strokeWidth={2.5} />
         </button>

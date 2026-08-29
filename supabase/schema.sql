@@ -318,3 +318,55 @@ create trigger user_preferences_set_updated_at
   before update on public.user_preferences
   for each row execute procedure public.set_updated_at();
 -- ============================================================
+
+
+-- ============================================================
+-- Phase 9 추가분 — 노래책 디자인 설정
+-- 기존 테이블/정책은 그대로 두고, 아래만 "추가로" 실행하세요.
+--
+-- user_preferences(Phase 8)와 다른 개념: 이건 "노래책 자체"의 디자인이라
+-- 누가 보든(로그인 여부/누구 개인 설정과 무관) 동일하게 보여야 하므로
+-- 공개 조회(select true) + 소유자/super_admin만 쓰기, 로 설계한다.
+-- (user_preferences는 반대로 본인만 조회 가능한 비공개 설정이었음)
+-- ============================================================
+
+create table if not exists public.book_designs (
+  owner_id uuid primary key references public.profiles (id) on delete cascade,
+  preset text not null default 'default' check (preset in ('default','light','dark','minimal','modern')),
+  accent_color text not null default '#fbbf24',
+  background_color text not null default '#14161F',
+  surface_color text not null default '#ffffff',
+  text_color text not null default '#f2f0ea',
+  title text,
+  description text,
+  song_display text not null default 'list' check (song_display in ('list','card')),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.book_designs enable row level security;
+
+-- 노래책 디자인은 songs/profiles처럼 누구나 조회 가능 (공개 노래책이니까)
+drop policy if exists "book_designs_public_read" on public.book_designs;
+create policy "book_designs_public_read"
+  on public.book_designs for select
+  using (true);
+
+-- 수정은 노래책 소유자 본인이거나 super_admin만
+drop policy if exists "book_designs_owner_write" on public.book_designs;
+create policy "book_designs_owner_write"
+  on public.book_designs for all
+  to authenticated
+  using (
+    auth.uid() = owner_id
+    or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+  )
+  with check (
+    auth.uid() = owner_id
+    or exists (select 1 from public.profiles where id = auth.uid() and role = 'super_admin')
+  );
+
+drop trigger if exists book_designs_set_updated_at on public.book_designs;
+create trigger book_designs_set_updated_at
+  before update on public.book_designs
+  for each row execute procedure public.set_updated_at();
+-- ============================================================

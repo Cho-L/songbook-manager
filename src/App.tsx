@@ -10,6 +10,7 @@ import { SongModePage } from "./pages/SongModePage";
 import { PlaylistsPage } from "./pages/PlaylistsPage";
 import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { BookDesignPage } from "./pages/BookDesignPage";
 import { RequireOwner } from "./components/RequireOwner";
 
 /**
@@ -73,6 +74,14 @@ function BookRoutes() {
       />
       <Route path="/playlists" element={<PlaylistsPage />} />
       <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
+      <Route
+        path="/design"
+        element={
+          <RequireOwner>
+            <BookDesignPage />
+          </RequireOwner>
+        }
+      />
     </Routes>
   );
 }
