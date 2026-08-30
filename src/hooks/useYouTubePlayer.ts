@@ -112,6 +112,23 @@ export function useYouTubePlayer(
       }
     }
 
+    // 재생 불가로 판정되면: interval/timeout부터 정리하고, React가 DOM을
+    // 갈아치우기 전에 YouTube API의 destroy()로 iframe을 먼저 스스로
+    // 정리하게 한다. 그 다음에야 React state를 바꿔서 대체 UI로 넘어간다.
+    // (순서를 반대로 하면 React가 "div인 줄 알았던" 자리에 이미 YT가
+    // 심어둔 iframe이 있어서 재조정 중 DOM이 꼬이고, 검은 화면/먹통
+    // 상태가 화면에 그대로 남는 문제가 생겼다.)
+    function failPlayback() {
+      clearBufferingTimeout();
+      if (intervalRef.current !== null) {
+        window.clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      playerRef.current?.destroy();
+      playerRef.current = null;
+      setPlaybackError(true);
+    }
+
     loadYouTubeIframeAPI().then(() => {
       if (cancelled || !window.YT) return;
 
@@ -121,8 +138,7 @@ export function useYouTubePlayer(
         events: {
           onError: (e) => {
             if (EMBED_BLOCKED_ERROR_CODES.has(e.data)) {
-              clearBufferingTimeout();
-              setPlaybackError(true);
+              failPlayback();
             }
           },
           onStateChange: (e) => {
@@ -134,7 +150,7 @@ export function useYouTubePlayer(
             if (e.data === YT_STATE_BUFFERING) {
               clearBufferingTimeout();
               bufferingTimeoutRef.current = window.setTimeout(() => {
-                setPlaybackError(true);
+                failPlayback();
               }, BUFFERING_HANG_TIMEOUT_MS);
             } else {
               clearBufferingTimeout();
