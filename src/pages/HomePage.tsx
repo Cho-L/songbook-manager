@@ -86,7 +86,7 @@ export function HomePage({
   const { ownerId } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser, logout } = useAuth();
-  const { favoriteIds, setMany: setManyFavorites } = useFavorites(currentUser?.id);
+  const { favoriteIds, toggle: toggleFavorite, setMany: setManyFavorites } = useFavorites(currentUser?.id);
   const { favoriteIds: ownerFavoriteIds } = useFavorites(ownerId);
   const { preferences } = usePreferences(currentUser?.id);
   const { playlists } = usePlaylists(ownerId);
@@ -144,6 +144,14 @@ export function HomePage({
   }, [songs]);
 
   const emptyQueryLabel = query || (favOnly ? "즐겨찾기" : "");
+
+  function handleFavoriteClick(songId: string) {
+    if (!currentUser) {
+      alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+      return;
+    }
+    toggleFavorite(songId);
+  }
 
   async function handleLogout() {
     await logout();
@@ -490,6 +498,7 @@ export function HomePage({
                 onToggleSelect={() => toggleSelect(song.id)}
                 displayMode={design.songDisplay}
                 onPlayClick={() => navigate(`/books/${ownerId}/songs/${song.id}/sing`)}
+                onFavoriteClick={() => handleFavoriteClick(song.id)}
               />
             ))}
           </div>

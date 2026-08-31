@@ -13,6 +13,8 @@ interface SongListItemProps {
   displayMode?: "list" | "card";
   /** 제공하면 리스트/카드에 재생(▶) 바로가기 버튼이 노출됨 */
   onPlayClick?: () => void;
+  /** 제공하면 즐겨찾기 별이 실제로 클릭 가능해짐 (선택 모드에서는 항상 숨김) */
+  onFavoriteClick?: () => void;
 }
 
 function SelectCheckbox({ selected }: { selected: boolean }) {
@@ -31,6 +33,40 @@ function SelectCheckbox({ selected }: { selected: boolean }) {
   );
 }
 
+interface FavoriteStarProps {
+  isFavorite: boolean;
+  onFavoriteClick?: () => void;
+  size: "sm" | "md";
+}
+
+/** 즐겨찾기 별 - onFavoriteClick이 있으면 실제 클릭 가능한 토글 버튼, 없으면(예: 미리보기) 읽기전용 표시 */
+function FavoriteStar({ isFavorite, onFavoriteClick, size }: FavoriteStarProps) {
+  const iconCls = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
+  const style = isFavorite
+    ? { fill: "var(--book-accent, #fbbf24)", color: "var(--book-accent, #fbbf24)" }
+    : { color: "rgba(255,255,255,0.3)" };
+
+  if (!onFavoriteClick) {
+    // 읽기전용(예: 클릭 핸들러를 안 넘기는 미리보기) - 즐겨찾기 아니면 아무것도 안 그림
+    return isFavorite ? <Star className={iconCls} style={style} /> : null;
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onFavoriteClick();
+      }}
+      aria-label={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+      aria-pressed={isFavorite}
+      className="p-0.5 -m-0.5"
+    >
+      <Star className={iconCls} style={style} />
+    </button>
+  );
+}
+
 export function SongListItem({
   song,
   isFavorite,
@@ -40,6 +76,7 @@ export function SongListItem({
   onToggleSelect,
   displayMode = "list",
   onPlayClick,
+  onFavoriteClick,
 }: SongListItemProps) {
   const selectedStyle =
     selectionMode && selected
@@ -100,14 +137,11 @@ export function SongListItem({
           className="flex items-center justify-between pt-3 mt-auto border-t"
           style={{ borderColor: "color-mix(in srgb, var(--book-surface, #ffffff) 12%, transparent)" }}
         >
-          <span className="text-white/40">
-            {isFavorite && (
-              <Star
-                className="h-4 w-4"
-                style={{ fill: "var(--book-accent, #fbbf24)", color: "var(--book-accent, #fbbf24)" }}
-              />
-            )}
-          </span>
+          {!selectionMode ? (
+            <FavoriteStar isFavorite={isFavorite} onFavoriteClick={onFavoriteClick} size="md" />
+          ) : (
+            <span />
+          )}
           {onPlayClick && (
             <button
               type="button"
@@ -145,11 +179,8 @@ export function SongListItem({
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <DifficultyDots value={song.difficulty} />
-        {isFavorite && (
-          <Star
-            className="h-3.5 w-3.5"
-            style={{ fill: "var(--book-accent, #fbbf24)", color: "var(--book-accent, #fbbf24)" }}
-          />
+        {!selectionMode && (
+          <FavoriteStar isFavorite={isFavorite} onFavoriteClick={onFavoriteClick} size="sm" />
         )}
         {onPlayClick && (
           <button
