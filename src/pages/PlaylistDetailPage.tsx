@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Play, X, Plus, Check } from "lucide-react";
+import { ChevronLeft, ChevronUp, ChevronDown, GripVertical, Play, X, Plus, Check } from "lucide-react";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
 import { useSongs } from "../hooks/useSongs";
 import { useAuth } from "../hooks/useAuth";
+import { useBookDesign } from "../hooks/useBookDesign";
 import { canManageBook } from "../utils/permissions";
+import { getChromeCssVars } from "../utils/color";
 import { playlistRepository } from "../services/playlistRepository";
 import type { Playlist } from "../types/playlist";
 
@@ -13,11 +15,23 @@ export function PlaylistDetailPage() {
   const navigate = useNavigate();
   const { profile: currentUser } = useAuth();
   const { songs } = useSongs(ownerId);
-  const { songIds, loading, removeSong, reload } = usePlaylistSongIds(playlistId);
+  const { songIds, loading, saving, removeSong, reorder, reload } = usePlaylistSongIds(playlistId);
   const [playlist, setPlaylist] = useState<Playlist | null>(null);
   const [showAddPicker, setShowAddPicker] = useState(false);
   const [picking, setPicking] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const { design } = useBookDesign(ownerId);
+  const bookStyle = {
+    "--book-accent": design.accentColor,
+    "--book-background": design.backgroundColor,
+    "--book-surface": design.surfaceColor,
+    "--book-text": design.textColor,
+    ...getChromeCssVars(design.backgroundColor),
+    backgroundColor: design.backgroundColor,
+    color: design.textColor,
+  } as React.CSSProperties;
 
   const isOwner = canManageBook(currentUser, ownerId);
 
@@ -35,6 +49,55 @@ export function PlaylistDetailPage() {
   function startPlaylist() {
     if (orderedSongs.length === 0) return;
     navigate(`/books/${ownerId}/songs/${orderedSongs[0].id}/sing?playlist=${playlistId}`);
+  }
+
+  async function startConcert() {
+    if (orderedSongs.length === 0) return;
+    try {
+      await document.documentElement.requestFullscreen?.();
+    } catch {
+      // 전체화면 진입 실패는 치명적이지 않음 — 그냥 일반 화면으로 진행
+    }
+    navigate(`/books/${ownerId}/playlists/${playlistId}/concert`);
+  }
+
+  async function moveSong(fromIndex: number, toIndex: number) {
+    if (toIndex < 0 || toIndex >= songIds.length || fromIndex === toIndex) return;
+    const newOrder = [...songIds];
+    const [moved] = newOrder.splice(fromIndex, 1);
+    newOrder.splice(toIndex, 0, moved);
+    try {
+      await reorder(newOrder);
+    } catch (e) {
+      console.error("플레이리스트 순서 저장 실패:", e);
+      alert("순서를 저장하지 못했어요. 이전 순서로 되돌립니다.");
+    }
+  }
+
+  function handleDragStart(index: number) {
+    if (!isOwner || saving) return;
+    setDraggedIndex(index);
+  }
+
+  function handleDragOver(e: React.DragEvent, index: number) {
+    if (draggedIndex === null) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverIndex !== index) setDragOverIndex(index);
+  }
+
+  function handleDrop(e: React.DragEvent, index: number) {
+    e.preventDefault();
+    if (draggedIndex !== null) {
+      moveSong(draggedIndex, index);
+    }
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  }
+
+  function handleDragEnd() {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   }
 
   function togglePick(songId: string) {
@@ -77,11 +140,12 @@ export function PlaylistDetailPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-16">
+    <div className="max-w-md mx-auto pb-16 min-h-screen" style={bookStyle}>
       <div className="px-5 pt-5">
         <button
           onClick={() => navigate(`/books/${ownerId}/playlists`)}
-          className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+          className="flex items-center gap-1 text-[13px]"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
         >
           <ChevronLeft className="h-4 w-4" /> 플레이리스트 목록으로
         </button>
@@ -92,13 +156,23 @@ export function PlaylistDetailPage() {
           <h1 className="text-[22px] font-semibold font-serif break-words">
             {playlist?.name ?? "플레이리스트"}
           </h1>
-          <p className="text-white/45 text-[13px] mt-1">{orderedSongs.length}곡</p>
+          <p
+            className="text-[13px] mt-1"
+            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
+          >
+            {orderedSongs.length}곡
+          </p>
         </div>
         {isOwner && (
           <button
             type="button"
             onClick={() => setShowAddPicker((v) => !v)}
-            className="flex items-center gap-1 text-[12.5px] px-3 py-1.5 rounded-full bg-white/[0.06] border border-white/10 text-white/60 shrink-0"
+            className="flex items-center gap-1 text-[12.5px] px-3 py-1.5 rounded-full border shrink-0"
+            style={{
+              backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
+              borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+              color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
+            }}
           >
             <Plus className="h-3.5 w-3.5" /> 곡 추가
           </button>
@@ -108,25 +182,35 @@ export function PlaylistDetailPage() {
       {showAddPicker && (
         <div className="px-5 mb-4">
           {availableSongs.length === 0 ? (
-            <p className="text-white/40 text-[13px]">추가할 수 있는 곡이 없어요 (전부 이미 포함됨).</p>
+            <p className="text-[13px]" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+              추가할 수 있는 곡이 없어요 (전부 이미 포함됨).
+            </p>
           ) : (
             <>
-              <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto rounded-lg border border-white/[0.06] p-2">
+              <div
+                className="flex flex-col gap-1.5 max-h-64 overflow-y-auto rounded-lg border p-2"
+                style={{ borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))" }}
+              >
                 {availableSongs.map((song) => (
                   <button
                     key={song.id}
                     type="button"
                     onClick={() => togglePick(song.id)}
                     className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${
-                      picking.has(song.id) ? "bg-amber-400/10" : "hover:bg-white/[0.04]"
+                      picking.has(song.id)
+                        ? "bg-amber-400/10"
+                        : "hover:bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))]"
                     }`}
                   >
                     <span
                       className={`shrink-0 h-4.5 w-4.5 rounded border flex items-center justify-center ${
-                        picking.has(song.id)
-                          ? "bg-amber-400 border-amber-400"
-                          : "border-white/25"
+                        picking.has(song.id) ? "bg-amber-400 border-amber-400" : ""
                       }`}
+                      style={
+                        picking.has(song.id)
+                          ? undefined
+                          : { borderColor: "var(--book-chrome-border, rgba(255,255,255,0.25))" }
+                      }
                     >
                       {picking.has(song.id) && (
                         <Check className="h-3 w-3 text-[#14161F]" strokeWidth={3} />
@@ -134,7 +218,10 @@ export function PlaylistDetailPage() {
                     </span>
                     <span className="min-w-0 flex-1">
                       <span className="text-[13.5px] block truncate">{song.title}</span>
-                      <span className="text-[11.5px] text-white/40 block truncate">
+                      <span
+                        className="text-[11.5px] block truncate"
+                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                      >
                         {song.artist}
                       </span>
                     </span>
@@ -145,7 +232,8 @@ export function PlaylistDetailPage() {
                 type="button"
                 onClick={handleAddPicked}
                 disabled={picking.size === 0 || adding}
-                className="mt-2 w-full rounded-lg bg-amber-400 text-[#14161F] font-medium py-2 text-[13px] disabled:opacity-40"
+                className="mt-2 w-full rounded-lg font-medium py-2 text-[13px] disabled:opacity-40"
+                style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
               >
                 {adding ? "추가하는 중..." : `${picking.size}곡 추가`}
               </button>
@@ -155,53 +243,134 @@ export function PlaylistDetailPage() {
       )}
 
       {orderedSongs.length > 0 && (
-        <div className="px-5 mb-3">
+        <div className="px-5 mb-3 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={startConcert}
+            className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3"
+            style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
+          >
+            🎤 공연 시작
+          </button>
           <button
             type="button"
             onClick={startPlaylist}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-amber-400 text-[#14161F] font-medium py-3"
+            className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 border"
+            style={{
+              borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+              color: "var(--book-chrome-text, rgba(255,255,255,0.8))",
+            }}
           >
             <Play className="h-4 w-4" strokeWidth={2.5} /> 이어서 부르기
           </button>
         </div>
       )}
 
-      {loading && <p className="px-5 text-white/40 text-sm mt-6">불러오는 중...</p>}
+      {loading && (
+        <p className="px-5 text-sm mt-6" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+          불러오는 중...
+        </p>
+      )}
 
       {!loading && orderedSongs.length === 0 && (
-        <p className="px-5 text-white/40 text-[13px] mt-6">
+        <p
+          className="px-5 text-[13px] mt-6"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+        >
           아직 곡이 없어요. "곡 추가" 버튼으로 넣어보세요.
         </p>
       )}
 
       {!loading && orderedSongs.length > 0 && (
         <div className="px-5 flex flex-col gap-2">
-          {orderedSongs.map((song, i) => (
-            <div
-              key={song.id}
-              className="rounded-xl bg-white/[0.04] border border-white/[0.06] px-4 py-3 flex items-center gap-3"
-            >
-              <span className="text-white/30 text-[12px] w-4 shrink-0">{i + 1}</span>
-              <button
-                type="button"
-                onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
-                className="flex-1 min-w-0 text-left"
+          {orderedSongs.map((song, i) => {
+            const isDragging = draggedIndex === i;
+            const isDragOver = dragOverIndex === i && draggedIndex !== null && draggedIndex !== i;
+            return (
+              <div
+                key={song.id}
+                draggable={isOwner && !saving}
+                onDragStart={() => handleDragStart(i)}
+                onDragOver={(e) => handleDragOver(e, i)}
+                onDrop={(e) => handleDrop(e, i)}
+                onDragEnd={handleDragEnd}
+                className="rounded-xl border px-4 py-3 flex items-center gap-2"
+                style={{
+                  backgroundColor: isDragOver
+                    ? "color-mix(in srgb, var(--book-accent, #fbbf24) 15%, var(--book-chrome-surface, rgba(255,255,255,0.04)))"
+                    : "var(--book-chrome-surface, rgba(255,255,255,0.04))",
+                  borderColor: isDragOver
+                    ? "var(--book-accent, #fbbf24)"
+                    : "var(--book-chrome-border, rgba(255,255,255,0.06))",
+                  opacity: isDragging ? 0.4 : 1,
+                }}
               >
-                <div className="text-[14.5px] font-medium truncate">{song.title}</div>
-                <div className="text-[12px] text-white/45 truncate">{song.artist}</div>
-              </button>
-              {isOwner && (
+                {isOwner && (
+                  <span
+                    className="shrink-0 cursor-grab active:cursor-grabbing hidden sm:block"
+                    style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                    aria-hidden="true"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </span>
+                )}
+                <span
+                  className="text-[12px] w-4 shrink-0"
+                  style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                >
+                  {i + 1}
+                </span>
                 <button
                   type="button"
-                  onClick={() => removeSong(song.id)}
-                  className="p-1.5 text-white/30 hover:text-red-400 shrink-0"
-                  aria-label="플레이리스트에서 제거"
+                  onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
+                  className="flex-1 min-w-0 text-left"
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <div className="text-[14.5px] font-medium truncate">{song.title}</div>
+                  <div
+                    className="text-[12px] truncate"
+                    style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
+                  >
+                    {song.artist}
+                  </div>
                 </button>
-              )}
-            </div>
-          ))}
+                {isOwner && (
+                  <div className="flex items-center shrink-0">
+                    <div className="flex flex-col">
+                      <button
+                        type="button"
+                        onClick={() => moveSong(i, i - 1)}
+                        disabled={i === 0 || saving}
+                        className="p-1 disabled:opacity-25"
+                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                        aria-label="곡을 위로 이동"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveSong(i, i + 1)}
+                        disabled={i === orderedSongs.length - 1 || saving}
+                        className="p-1 disabled:opacity-25"
+                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                        aria-label="곡을 아래로 이동"
+                      >
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeSong(song.id)}
+                      className="p-1.5 hover:text-red-400 shrink-0"
+                      style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                      aria-label="플레이리스트에서 제거"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

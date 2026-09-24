@@ -46,6 +46,7 @@ export function usePlaylists(ownerId: string | undefined) {
 export function usePlaylistSongIds(playlistId: string | undefined) {
   const [songIds, setSongIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const reload = useCallback(async () => {
     if (!playlistId) {
@@ -84,5 +85,27 @@ export function usePlaylistSongIds(playlistId: string | undefined) {
     [playlistId]
   );
 
-  return { songIds, loading, addSong, removeSong, reload };
+  /**
+   * 화면에 보이는 최종 순서(newOrder)를 즉시 반영(낙관적 업데이트)한 뒤 한 번의 upsert로 저장한다.
+   * 저장이 실패하면 이전 순서로 되돌리고 에러를 던져서 호출한 쪽에서 사용자에게 알릴 수 있게 한다.
+   */
+  const reorder = useCallback(
+    async (newOrder: string[]) => {
+      if (!playlistId) return;
+      const previous = songIds;
+      setSongIds(newOrder);
+      setSaving(true);
+      try {
+        await playlistRepository.reorder(playlistId, newOrder);
+      } catch (e) {
+        setSongIds(previous);
+        throw e;
+      } finally {
+        setSaving(false);
+      }
+    },
+    [playlistId, songIds]
+  );
+
+  return { songIds, loading, saving, addSong, removeSong, reorder, reload };
 }

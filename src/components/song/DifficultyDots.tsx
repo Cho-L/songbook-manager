@@ -8,9 +8,13 @@ export function DifficultyDots({ value = 0 }: DifficultyDotsProps) {
       {[1, 2, 3, 4, 5].map((n) => (
         <span
           key={n}
-          className={`h-1.5 w-1.5 rounded-full ${
-            n <= value ? "bg-amber-400" : "bg-white/15"
-          }`}
+          className="h-1.5 w-1.5 rounded-full"
+          style={{
+            backgroundColor:
+              n <= value
+                ? "var(--book-accent, #fbbf24)"
+                : "var(--book-chrome-muted, rgba(255,255,255,0.15))",
+          }}
         />
       ))}
     </div>

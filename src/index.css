@@ -14,3 +14,9 @@ body {
 .font-serif {
   font-family: Georgia, "Noto Serif KR", serif;
 }
+
+/* book-chrome 색상 체계를 쓰는 입력창의 placeholder 색 — 인라인 style로는
+   ::placeholder를 지정할 수 없어 유틸 클래스로 뺀다. */
+.book-input::placeholder {
+  color: var(--book-chrome-muted, rgba(255, 255, 255, 0.3));
+}

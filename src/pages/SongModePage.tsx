@@ -269,9 +269,21 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         )}
 
         {isInPlaylist && (
-          <span className={`text-[11px] ml-auto shrink-0 ${tones.muted}`}>
-            {playlistSongIds.indexOf(song.id) + 1} / {playlistSongIds.length}
-          </span>
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={() =>
+                navigate(`/books/${ownerId}/playlists/${playlistId}/concert?start=${song.id}`)
+              }
+              className={`text-[11px] px-2.5 py-1 rounded-full border ${tones.chipBg} ${tones.chipBorder} ${tones.base}`}
+              title="이 플레이리스트를 공연 모드로 보기"
+            >
+              🎤 공연 모드
+            </button>
+            <span className={`text-[11px] ${tones.muted}`}>
+              {playlistSongIds.indexOf(song.id) + 1} / {playlistSongIds.length}
+            </span>
+          </div>
         )}
       </div>
 

@@ -7,6 +7,7 @@ import { HomePage } from "./pages/HomePage";
 import { SongDetailPage } from "./pages/SongDetailPage";
 import { SongFormPage } from "./pages/SongFormPage";
 import { SongModePage } from "./pages/SongModePage";
+import { ConcertModePage } from "./pages/ConcertModePage";
 import { PlaylistsPage } from "./pages/PlaylistsPage";
 import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -74,6 +75,10 @@ function BookRoutes() {
       />
       <Route path="/playlists" element={<PlaylistsPage />} />
       <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />
+      <Route
+        path="/playlists/:playlistId/concert"
+        element={<ConcertModePage songs={songs} loading={loading} />}
+      />
       <Route
         path="/design"
         element={

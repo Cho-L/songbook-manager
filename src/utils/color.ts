@@ -66,3 +66,32 @@ export function getChromeTones(backgroundColor: string): ChromeTones {
         panelBorder: "border-white/[0.06]",
       };
 }
+
+/**
+ * getChromeTones가 Tailwind 클래스를 반환하는 것과 달리, 이 함수는 실제 값을 가진
+ * CSS 커스텀 프로퍼티 묶음을 반환한다. HomePage/BookDesignPage처럼 --book-accent /
+ * --book-background / --book-surface / --book-text 를 이미 주입하는 컨테이너에
+ * 같이 스프레드해서 쓴다.
+ *
+ * --book-accent / --book-background / --book-surface / --book-text 는
+ * 사용자가 직접 고르는 "디자인" 색상이고, 이 4개(--book-chrome-*)는
+ * 리스트 보더, 뮤트 텍스트, 미선택 표면처럼 사용자가 고르지 않는
+ * 중립 UI 크롬에 쓰는 값이라 서로 이름과 용도가 겹치지 않는다.
+ */
+export interface ChromeCssVars {
+  "--book-chrome-text": string;
+  "--book-chrome-muted": string;
+  "--book-chrome-border": string;
+  "--book-chrome-surface": string;
+}
+
+export function getChromeCssVars(backgroundColor: string): ChromeCssVars {
+  const light = isLightBackground(backgroundColor);
+  const rgb = light ? "0,0,0" : "255,255,255";
+  return {
+    "--book-chrome-text": light ? "#000000" : "#ffffff",
+    "--book-chrome-muted": `rgba(${rgb},0.45)`,
+    "--book-chrome-border": `rgba(${rgb},0.12)`,
+    "--book-chrome-surface": `rgba(${rgb},0.05)`,
+  };
+}

@@ -12,6 +12,7 @@ interface BookCardData {
   profile: Profile;
   songCount: number;
   accentColor: string;
+  title: string | null;
 }
 
 export function SongbookSelectPage() {
@@ -32,7 +33,7 @@ export function SongbookSelectPage() {
               songRepository.getByOwner(profile.id),
               bookDesignRepository.get(profile.id),
             ]);
-            return { profile, songCount: songs.length, accentColor: design.accentColor };
+            return { profile, songCount: songs.length, accentColor: design.accentColor, title: design.title };
           })
         );
         if (active) setBooks(withDetails);
@@ -73,7 +74,7 @@ export function SongbookSelectPage() {
         {/* 노래책 카드 그리드 */}
         {!loading && !error && (
           <div className="mt-8 lg:mt-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {books.map(({ profile, songCount, accentColor }) => (
+            {books.map(({ profile, songCount, accentColor, title }) => (
               <button
                 key={profile.id}
                 onClick={() => navigate(`/books/${profile.id}`)}
@@ -90,7 +91,7 @@ export function SongbookSelectPage() {
                 </div>
                 <div>
                   <div className="text-[16px] font-semibold text-white truncate">
-                    {profile.name}의 노래책
+                    {title || `${profile.name}의 노래책`}
                   </div>
                   <div className="text-[12.5px] text-white/40 mt-1">{songCount}곡</div>
                 </div>

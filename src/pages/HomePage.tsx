@@ -32,6 +32,7 @@ import { useBookDesign } from "../hooks/useBookDesign";
 import { profileRepository } from "../services/profileRepository";
 import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
+import { getChromeCssVars } from "../utils/color";
 import {
   songsToJSON,
   songsToCSV,
@@ -325,6 +326,7 @@ export function HomePage({
           "--book-background": design.backgroundColor,
           "--book-surface": design.surfaceColor,
           "--book-text": design.textColor,
+          ...getChromeCssVars(design.backgroundColor),
           backgroundColor: design.backgroundColor,
           color: design.textColor,
         } as React.CSSProperties
@@ -333,7 +335,7 @@ export function HomePage({
       <div className="px-5 lg:px-8 pt-5 flex items-center justify-between">
         <button
           onClick={() => navigate("/")}
-          className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+          className="flex items-center gap-1 text-[13px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
         >
           <ChevronLeft className="h-4 w-4" /> 노래책 선택으로
         </button>
@@ -341,21 +343,21 @@ export function HomePage({
           {isOwner && (
             <button
               onClick={() => navigate(`/books/${ownerId}/design`)}
-              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+              className="flex items-center gap-1 text-[13px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
             >
               <Palette className="h-3.5 w-3.5" /> 꾸미기
             </button>
           )}
           <button
             onClick={() => navigate(`/books/${ownerId}/playlists`)}
-            className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+            className="flex items-center gap-1 text-[13px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
           >
             <ListMusic className="h-3.5 w-3.5" /> 플레이리스트
           </button>
           {currentUser && (
             <button
               onClick={() => navigate("/settings")}
-              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+              className="flex items-center gap-1 text-[13px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
             >
               <Settings className="h-3.5 w-3.5" /> 설정
             </button>
@@ -363,7 +365,7 @@ export function HomePage({
           {currentUser && (
             <button
               onClick={handleLogout}
-              className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+              className="flex items-center gap-1 text-[13px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
             >
               <LogOut className="h-3.5 w-3.5" /> 로그아웃
             </button>

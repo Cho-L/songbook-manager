@@ -3,6 +3,7 @@ import { ChevronLeft } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { canManageBook } from "../utils/permissions";
+import { getChromeCssVars } from "../utils/color";
 import { BOOK_DESIGN_PRESETS } from "../types/bookDesign";
 import type { BookDesignPreset, SongDisplayMode } from "../types/bookDesign";
 import { SongListItem } from "../components/song/SongListItem";
@@ -194,8 +195,10 @@ export function BookDesignPage() {
                 backgroundColor: design.backgroundColor,
                 borderColor: "rgba(255,255,255,0.1)",
                 "--book-accent": design.accentColor,
+                "--book-background": design.backgroundColor,
                 "--book-surface": design.surfaceColor,
                 "--book-text": design.textColor,
+                ...getChromeCssVars(design.backgroundColor),
                 color: design.textColor,
               } as React.CSSProperties
             }

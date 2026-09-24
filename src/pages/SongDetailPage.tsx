@@ -6,8 +6,10 @@ import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylists } from "../hooks/usePlaylists";
+import { useBookDesign } from "../hooks/useBookDesign";
 import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
+import { getChromeCssVars } from "../utils/color";
 
 interface SongDetailPageProps {
   songs: Song[];
@@ -22,14 +24,27 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   const song = songs.find((s) => s.id === id);
   const isOwner = canManageBook(currentUser, ownerId);
   const { playlists } = usePlaylists(isOwner ? ownerId : undefined);
+  const { design } = useBookDesign(ownerId);
+  const bookStyle = {
+    "--book-accent": design.accentColor,
+    "--book-background": design.backgroundColor,
+    "--book-surface": design.surfaceColor,
+    "--book-text": design.textColor,
+    ...getChromeCssVars(design.backgroundColor),
+    backgroundColor: design.backgroundColor,
+    color: design.textColor,
+  } as React.CSSProperties;
 
   if (!song) {
     return (
-      <div className="max-w-md mx-auto px-5 pt-10 text-center text-white/50">
-        <p>곡을 찾을 수 없어요.</p>
+      <div className="max-w-md mx-auto px-5 pt-10 pb-10 min-h-screen text-center" style={bookStyle}>
+        <p style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}>
+          곡을 찾을 수 없어요.
+        </p>
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
-          className="mt-3 text-amber-300 text-sm"
+          className="mt-3 text-sm"
+          style={{ color: "var(--book-accent, #fbbf24)" }}
         >
           목록으로 돌아가기
         </button>
@@ -66,11 +81,12 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-16">
+    <div className="max-w-md mx-auto pb-16 min-h-screen" style={bookStyle}>
       <div className="flex items-center justify-between px-4 pt-5 pb-2">
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
-          className="p-2 -ml-2 text-white/60 hover:text-white"
+          className="p-2 -ml-2"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
           aria-label="뒤로가기"
         >
           <ChevronLeft className="h-5 w-5" />
@@ -79,19 +95,22 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
           <FavoriteButton
             active={currentUser ? favoriteIds.has(song.id) : false}
             onToggle={handleFavoriteClick}
+            colorClassName="text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))]"
           />
           {isOwner && (
             <>
               <button
                 onClick={() => navigate(`/books/${ownerId}/songs/${song.id}/edit`)}
-                className="p-2 text-white/60 hover:text-white"
+                className="p-2"
+                style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
                 aria-label="수정"
               >
                 <Pencil className="h-[18px] w-[18px]" />
               </button>
               <button
                 onClick={handleDelete}
-                className="p-2 text-white/60 hover:text-red-400"
+                className="p-2 hover:text-red-400"
+                style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
                 aria-label="삭제"
               >
                 <Trash2 className="h-[18px] w-[18px]" />
@@ -103,9 +122,17 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
       <div className="px-5 pt-2">
         <h1 className="text-2xl font-semibold font-serif">{song.title}</h1>
-        <p className="text-white/50 text-sm mt-1">{song.artist}</p>
+        <p
+          className="text-sm mt-1"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}
+        >
+          {song.artist}
+        </p>
 
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 text-[13px] text-white/50">
+        <div
+          className="flex flex-wrap gap-x-4 gap-y-1.5 mt-4 text-[13px]"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}
+        >
           {song.composer && <span>작곡 {song.composer}</span>}
           {song.lyricist && <span>작사 {song.lyricist}</span>}
           {song.genre && <span>{song.genre}</span>}
@@ -121,7 +148,11 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
             {song.tags.map((t) => (
               <span
                 key={t}
-                className="text-[11px] px-2 py-1 rounded-full bg-white/[0.06] text-white/50"
+                className="text-[11px] px-2 py-1 rounded-full"
+                style={{
+                  backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
+                  color: "var(--book-chrome-muted, rgba(255,255,255,0.5))",
+                }}
               >
                 #{t}
               </span>
@@ -143,7 +174,8 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
         <button
           onClick={() => navigate(`/books/${ownerId}/songs/${song.id}/sing`)}
-          className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl bg-amber-400 text-[#14161F] font-medium py-3 text-[15px]"
+          className="mt-5 w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 text-[15px]"
+          style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
         >
           <Mic className="h-4 w-4" /> 노래 부르기 모드
         </button>
@@ -153,31 +185,58 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
             <select
               defaultValue=""
               onChange={handleAddToPlaylist}
-              className="w-full appearance-none rounded-xl bg-white/[0.06] border border-white/10 py-2.5 pl-9 pr-3 text-[13px] text-white/70 outline-none"
+              className="w-full appearance-none rounded-xl border py-2.5 pl-9 pr-3 text-[13px] outline-none"
+              style={{
+                backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
+                borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+                color: "var(--book-chrome-text, rgba(255,255,255,0.7))",
+              }}
             >
               <option value="" disabled>
                 플레이리스트에 추가...
               </option>
               {playlists.map((p) => (
-                <option key={p.id} value={p.id} className="bg-[#14161F]">
+                <option
+                  key={p.id}
+                  value={p.id}
+                  style={{ backgroundColor: design.backgroundColor, color: design.textColor }}
+                >
                   {p.name}
                 </option>
               ))}
             </select>
-            <ListPlus className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/40 pointer-events-none" />
+            <ListPlus
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+            />
           </div>
         )}
 
         {song.memo && (
-          <div className="mt-5 rounded-lg bg-white/[0.04] border border-white/[0.06] px-3.5 py-3 text-[13px] text-white/60">
+          <div
+            className="mt-5 rounded-lg border px-3.5 py-3 text-[13px]"
+            style={{
+              backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.04))",
+              borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))",
+              color: "var(--book-chrome-muted, rgba(255,255,255,0.6))",
+            }}
+          >
             {song.memo}
           </div>
         )}
 
         {song.chords && (
           <div className="mt-5">
-            <div className="text-xs text-white/40 mb-1.5">코드</div>
-            <pre className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-emerald-300/90 bg-white/[0.03] rounded-lg p-3 font-mono">
+            <div
+              className="text-xs mb-1.5"
+              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+            >
+              코드
+            </div>
+            <pre
+              className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-emerald-300/90 rounded-lg p-3 font-mono"
+              style={{ backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.03))" }}
+            >
               {song.chords}
             </pre>
           </div>
@@ -185,8 +244,16 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
         {song.lyrics && (
           <div className="mt-5">
-            <div className="text-xs text-white/40 mb-1.5">가사</div>
-            <div className="text-[14.5px] leading-[1.9] text-white/85">
+            <div
+              className="text-xs mb-1.5"
+              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+            >
+              가사
+            </div>
+            <div
+              className="text-[14.5px] leading-[1.9]"
+              style={{ color: "var(--book-text, #ffffff)", opacity: 0.85 }}
+            >
               {song.lyrics.split(/\r?\n/).map((line, i) =>
                 line === "" ? (
                   <div key={i} className="h-4" aria-hidden="true" />

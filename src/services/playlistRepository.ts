@@ -140,6 +140,28 @@ export const playlistRepository = {
     if (error) throw error;
   },
 
+  /** 현재 화면 순서(orderedSongIds)를 기준으로 position을 0부터 다시 매겨 한 번에 저장한다. */
+  async reorder(playlistId: string, orderedSongIds: string[]): Promise<void> {
+    if (!isSupabaseConfigured || !supabase) {
+      const all = readLocal<{ playlistId: string; songId: string; position: number }>(
+        LOCAL_PLAYLIST_SONGS_KEY
+      );
+      const others = all.filter((e) => e.playlistId !== playlistId);
+      const reordered = orderedSongIds.map((songId, i) => ({ playlistId, songId, position: i }));
+      writeLocal(LOCAL_PLAYLIST_SONGS_KEY, [...others, ...reordered]);
+      return;
+    }
+    const rows = orderedSongIds.map((songId, i) => ({
+      playlist_id: playlistId,
+      song_id: songId,
+      position: i,
+    }));
+    const { error } = await supabase
+      .from("playlist_songs")
+      .upsert(rows, { onConflict: "playlist_id,song_id" });
+    if (error) throw error;
+  },
+
   async removeSong(playlistId: string, songId: string): Promise<void> {
     if (!isSupabaseConfigured || !supabase) {
       writeLocal(

@@ -24,7 +24,7 @@ function SelectCheckbox({ selected }: { selected: boolean }) {
       style={
         selected
           ? { backgroundColor: "var(--book-accent, #fbbf24)", borderColor: "var(--book-accent, #fbbf24)" }
-          : { borderColor: "rgba(255,255,255,0.25)" }
+          : { borderColor: "var(--book-chrome-border, rgba(255,255,255,0.25))" }
       }
       aria-hidden="true"
     >
@@ -44,7 +44,7 @@ function FavoriteStar({ isFavorite, onFavoriteClick, size }: FavoriteStarProps) 
   const iconCls = size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
   const style = isFavorite
     ? { fill: "var(--book-accent, #fbbf24)", color: "var(--book-accent, #fbbf24)" }
-    : { color: "rgba(255,255,255,0.3)" };
+    : { color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" };
 
   if (!onFavoriteClick) {
     // 읽기전용(예: 클릭 핸들러를 안 넘기는 미리보기) - 즐겨찾기 아니면 아무것도 안 그림
@@ -114,7 +114,10 @@ export function SongListItem({
           {selectionMode ? (
             <SelectCheckbox selected={selected} />
           ) : (
-            <span className="text-[11px] uppercase tracking-wide text-white/30">
+            <span
+              className="text-[11px] uppercase tracking-wide"
+              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+            >
               {song.genre || "곡"}
             </span>
           )}
@@ -123,11 +126,19 @@ export function SongListItem({
         {/* 제목/아티스트 영역 */}
         <div>
           <div className="text-[17px] font-semibold leading-snug break-words">{song.title}</div>
-          <div className="text-[13px] text-white/50 truncate mt-1">{song.artist}</div>
+          <div
+            className="text-[13px] truncate mt-1"
+            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}
+          >
+            {song.artist}
+          </div>
         </div>
 
         {/* 메타데이터 영역 */}
-        <div className="flex items-center gap-3 text-[11px] text-white/35">
+        <div
+          className="flex items-center gap-3 text-[11px]"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.35))" }}
+        >
           <DifficultyDots value={song.difficulty} />
           {song.key && <span>Key {song.key}</span>}
         </div>
@@ -167,12 +178,20 @@ export function SongListItem({
       onKeyDown={(e) => e.key === "Enter" && (selectionMode ? onToggleSelect?.() : onClick())}
       aria-pressed={selectionMode ? selected : undefined}
       className="text-left rounded-xl border px-4 py-3.5 flex items-center gap-3 transition w-full cursor-pointer"
-      style={selectedStyle ?? { backgroundColor: "rgba(255,255,255,0.04)", borderColor: "rgba(255,255,255,0.06)" }}
+      style={
+        selectedStyle ?? {
+          backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.04))",
+          borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))",
+        }
+      }
     >
       {selectionMode && <SelectCheckbox selected={selected} />}
       <div className="min-w-0 flex-1">
         <div className="text-[15px] font-medium truncate">{song.title}</div>
-        <div className="text-[12.5px] text-white/45 truncate mt-0.5">
+        <div
+          className="text-[12.5px] truncate mt-0.5"
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
+        >
           {song.artist}
           {song.genre ? ` · ${song.genre}` : ""}
         </div>
