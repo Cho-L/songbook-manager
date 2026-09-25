@@ -264,7 +264,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
       </div>
 
       {/* 본문: PC에서는 좌(가사/영상) + 우(공연 큐) 2단 레이아웃, 모바일은 1단 */}
-      <div className="flex-1 w-full max-w-6xl mx-auto px-5 lg:px-8 pb-40 lg:pb-10 lg:grid lg:grid-cols-[1fr_280px] lg:gap-10">
+      <div className="flex-1 w-full max-w-7xl mx-auto px-5 lg:px-10 pb-40 lg:pb-10 lg:grid lg:grid-cols-[1fr_320px] lg:gap-12">
         <div className="min-w-0">
           <h1 className="text-2xl lg:text-3xl font-semibold font-serif break-words">
             {song.title}
@@ -282,7 +282,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
           {song.youtubeVideoId ? (
             playbackError ? (
               <div
-                className="aspect-video w-full max-w-2xl rounded-lg mb-6 border flex items-center justify-center text-center px-6"
+                className="aspect-video w-full max-w-3xl rounded-lg mb-6 border flex items-center justify-center text-center px-6"
                 style={{ borderColor: CHROME_BORDER, backgroundColor: CHROME_SURFACE }}
               >
                 <p className="text-[13px]" style={{ color: CHROME_MUTED }}>
@@ -290,7 +290,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
                 </p>
               </div>
             ) : (
-              <div className="aspect-video w-full max-w-2xl rounded-lg overflow-hidden mb-6">
+              <div className="aspect-video w-full max-w-3xl rounded-lg overflow-hidden mb-6">
                 <div id={playerContainerId} className="w-full h-full" />
               </div>
             )
@@ -307,7 +307,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
 
           {lyricLines.length > 0 ? (
             <div
-              className={`leading-[2.1] ${CONCERT_LYRICS_SCALE[lyricsIndex]} ${
+              className={`max-w-3xl leading-[2.1] ${CONCERT_LYRICS_SCALE[lyricsIndex]} ${
                 LYRICS_FONT_FAMILY_CLASS[preferences.fontFamily] ?? ""
               }`}
             >

@@ -140,8 +140,8 @@ export function PlaylistDetailPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-16 min-h-screen" style={bookStyle}>
-      <div className="px-5 pt-5">
+    <div className="max-w-md lg:max-w-4xl mx-auto pb-16 min-h-screen" style={bookStyle}>
+      <div className="px-5 lg:px-8 pt-5">
         <button
           onClick={() => navigate(`/books/${ownerId}/playlists`)}
           className="flex items-center gap-1 text-[13px]"
@@ -151,228 +151,251 @@ export function PlaylistDetailPage() {
         </button>
       </div>
 
-      <div className="px-5 pt-3 pb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-[22px] font-semibold font-serif break-words">
-            {playlist?.name ?? "플레이리스트"}
-          </h1>
-          <p
-            className="text-[13px] mt-1"
-            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
-          >
-            {orderedSongs.length}곡
-          </p>
-        </div>
-        {isOwner && (
-          <button
-            type="button"
-            onClick={() => setShowAddPicker((v) => !v)}
-            className="flex items-center gap-1 text-[12.5px] px-3 py-1.5 rounded-full border shrink-0"
-            style={{
-              backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
-              borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
-              color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
-            }}
-          >
-            <Plus className="h-3.5 w-3.5" /> 곡 추가
-          </button>
-        )}
-      </div>
-
-      {showAddPicker && (
-        <div className="px-5 mb-4">
-          {availableSongs.length === 0 ? (
-            <p className="text-[13px]" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
-              추가할 수 있는 곡이 없어요 (전부 이미 포함됨).
-            </p>
-          ) : (
-            <>
-              <div
-                className="flex flex-col gap-1.5 max-h-64 overflow-y-auto rounded-lg border p-2"
-                style={{ borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))" }}
+      <div className="px-5 lg:px-8 pt-3 pb-4 lg:grid lg:grid-cols-[280px_1fr] lg:gap-10 lg:items-start">
+        {/* 좌측(PC): 제목/설명/주요 액션/곡 추가. 모바일: 기존처럼 맨 위에 세로로 쌓임 */}
+        <div className="lg:sticky lg:top-8">
+          <div className="flex items-start justify-between gap-3 lg:block">
+            <div>
+              <h1 className="text-[22px] lg:text-[26px] font-semibold font-serif break-words">
+                {playlist?.name ?? "플레이리스트"}
+              </h1>
+              <p
+                className="text-[13px] mt-1"
+                style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
               >
-                {availableSongs.map((song) => (
-                  <button
-                    key={song.id}
-                    type="button"
-                    onClick={() => togglePick(song.id)}
-                    className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${
-                      picking.has(song.id)
-                        ? "bg-amber-400/10"
-                        : "hover:bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))]"
-                    }`}
-                  >
-                    <span
-                      className={`shrink-0 h-4.5 w-4.5 rounded border flex items-center justify-center ${
-                        picking.has(song.id) ? "bg-amber-400 border-amber-400" : ""
-                      }`}
-                      style={
-                        picking.has(song.id)
-                          ? undefined
-                          : { borderColor: "var(--book-chrome-border, rgba(255,255,255,0.25))" }
-                      }
-                    >
-                      {picking.has(song.id) && (
-                        <Check className="h-3 w-3 text-[#14161F]" strokeWidth={3} />
-                      )}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="text-[13.5px] block truncate">{song.title}</span>
-                      <span
-                        className="text-[11.5px] block truncate"
-                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
-                      >
-                        {song.artist}
-                      </span>
-                    </span>
-                  </button>
-                ))}
-              </div>
+                {orderedSongs.length}곡
+              </p>
+            </div>
+            {isOwner && (
               <button
                 type="button"
-                onClick={handleAddPicked}
-                disabled={picking.size === 0 || adding}
-                className="mt-2 w-full rounded-lg font-medium py-2 text-[13px] disabled:opacity-40"
-                style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
-              >
-                {adding ? "추가하는 중..." : `${picking.size}곡 추가`}
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {orderedSongs.length > 0 && (
-        <div className="px-5 mb-3 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={startConcert}
-            className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3"
-            style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
-          >
-            🎤 공연 시작
-          </button>
-          <button
-            type="button"
-            onClick={startPlaylist}
-            className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 border"
-            style={{
-              borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
-              color: "var(--book-chrome-text, rgba(255,255,255,0.8))",
-            }}
-          >
-            <Play className="h-4 w-4" strokeWidth={2.5} /> 이어서 부르기
-          </button>
-        </div>
-      )}
-
-      {loading && (
-        <p className="px-5 text-sm mt-6" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
-          불러오는 중...
-        </p>
-      )}
-
-      {!loading && orderedSongs.length === 0 && (
-        <p
-          className="px-5 text-[13px] mt-6"
-          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
-        >
-          아직 곡이 없어요. "곡 추가" 버튼으로 넣어보세요.
-        </p>
-      )}
-
-      {!loading && orderedSongs.length > 0 && (
-        <div className="px-5 flex flex-col gap-2">
-          {orderedSongs.map((song, i) => {
-            const isDragging = draggedIndex === i;
-            const isDragOver = dragOverIndex === i && draggedIndex !== null && draggedIndex !== i;
-            return (
-              <div
-                key={song.id}
-                draggable={isOwner && !saving}
-                onDragStart={() => handleDragStart(i)}
-                onDragOver={(e) => handleDragOver(e, i)}
-                onDrop={(e) => handleDrop(e, i)}
-                onDragEnd={handleDragEnd}
-                className="rounded-xl border px-4 py-3 flex items-center gap-2"
+                onClick={() => setShowAddPicker((v) => !v)}
+                className="flex items-center gap-1 text-[12.5px] px-3 py-1.5 rounded-full border shrink-0 lg:hidden"
                 style={{
-                  backgroundColor: isDragOver
-                    ? "color-mix(in srgb, var(--book-accent, #fbbf24) 15%, var(--book-chrome-surface, rgba(255,255,255,0.04)))"
-                    : "var(--book-chrome-surface, rgba(255,255,255,0.04))",
-                  borderColor: isDragOver
-                    ? "var(--book-accent, #fbbf24)"
-                    : "var(--book-chrome-border, rgba(255,255,255,0.06))",
-                  opacity: isDragging ? 0.4 : 1,
+                  backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
+                  borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+                  color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
                 }}
               >
-                {isOwner && (
-                  <span
-                    className="shrink-0 cursor-grab active:cursor-grabbing hidden sm:block"
-                    style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
-                    aria-hidden="true"
-                  >
-                    <GripVertical className="h-4 w-4" />
-                  </span>
-                )}
-                <span
-                  className="text-[12px] w-4 shrink-0"
-                  style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
-                >
-                  {i + 1}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
-                  className="flex-1 min-w-0 text-left"
-                >
-                  <div className="text-[14.5px] font-medium truncate">{song.title}</div>
+                <Plus className="h-3.5 w-3.5" /> 곡 추가
+              </button>
+            )}
+          </div>
+
+          {orderedSongs.length > 0 && (
+            <div className="mt-4 flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={startConcert}
+                className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3"
+                style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
+              >
+                🎤 공연 시작
+              </button>
+              <button
+                type="button"
+                onClick={startPlaylist}
+                className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 border"
+                style={{
+                  borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+                  color: "var(--book-chrome-text, rgba(255,255,255,0.8))",
+                }}
+              >
+                <Play className="h-4 w-4" strokeWidth={2.5} /> 이어서 부르기
+              </button>
+            </div>
+          )}
+
+          {isOwner && (
+            <button
+              type="button"
+              onClick={() => setShowAddPicker((v) => !v)}
+              className="hidden lg:flex mt-2 w-full items-center justify-center gap-1.5 text-[13px] px-3 py-2.5 rounded-xl border"
+              style={{
+                backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
+                borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
+                color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" /> 곡 추가
+            </button>
+          )}
+
+          {showAddPicker && (
+            <div className="mt-3">
+              {availableSongs.length === 0 ? (
+                <p className="text-[13px]" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+                  추가할 수 있는 곡이 없어요 (전부 이미 포함됨).
+                </p>
+              ) : (
+                <>
                   <div
-                    className="text-[12px] truncate"
-                    style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
+                    className="flex flex-col gap-1.5 max-h-64 lg:max-h-[50vh] overflow-y-auto rounded-lg border p-2"
+                    style={{ borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))" }}
                   >
-                    {song.artist}
+                    {availableSongs.map((song) => (
+                      <button
+                        key={song.id}
+                        type="button"
+                        onClick={() => togglePick(song.id)}
+                        className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-left ${
+                          picking.has(song.id)
+                            ? "bg-amber-400/10"
+                            : "hover:bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))]"
+                        }`}
+                      >
+                        <span
+                          className={`shrink-0 h-4.5 w-4.5 rounded border flex items-center justify-center ${
+                            picking.has(song.id) ? "bg-amber-400 border-amber-400" : ""
+                          }`}
+                          style={
+                            picking.has(song.id)
+                              ? undefined
+                              : { borderColor: "var(--book-chrome-border, rgba(255,255,255,0.25))" }
+                          }
+                        >
+                          {picking.has(song.id) && (
+                            <Check className="h-3 w-3 text-[#14161F]" strokeWidth={3} />
+                          )}
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="text-[13.5px] block truncate">{song.title}</span>
+                          <span
+                            className="text-[11.5px] block truncate"
+                            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                          >
+                            {song.artist}
+                          </span>
+                        </span>
+                      </button>
+                    ))}
                   </div>
-                </button>
-                {isOwner && (
-                  <div className="flex items-center shrink-0">
-                    <div className="flex flex-col">
-                      <button
-                        type="button"
-                        onClick={() => moveSong(i, i - 1)}
-                        disabled={i === 0 || saving}
-                        className="p-1 disabled:opacity-25"
-                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
-                        aria-label="곡을 위로 이동"
+                  <button
+                    type="button"
+                    onClick={handleAddPicked}
+                    disabled={picking.size === 0 || adding}
+                    className="mt-2 w-full rounded-lg font-medium py-2 text-[13px] disabled:opacity-40"
+                    style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
+                  >
+                    {adding ? "추가하는 중..." : `${picking.size}곡 추가`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* 우측(PC) / 본문(모바일): 곡 목록 */}
+        <div className="mt-5 lg:mt-0">
+          {loading && (
+            <p className="text-sm" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+              불러오는 중...
+            </p>
+          )}
+
+          {!loading && orderedSongs.length === 0 && (
+            <p
+              className="text-[13px]"
+              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+            >
+              아직 곡이 없어요. "곡 추가" 버튼으로 넣어보세요.
+            </p>
+          )}
+
+          {!loading && orderedSongs.length > 0 && (
+            <div className="flex flex-col gap-2">
+              {orderedSongs.map((song, i) => {
+                const isDragging = draggedIndex === i;
+                const isDragOver = dragOverIndex === i && draggedIndex !== null && draggedIndex !== i;
+                return (
+                  <div
+                    key={song.id}
+                    draggable={isOwner && !saving}
+                    onDragStart={() => handleDragStart(i)}
+                    onDragOver={(e) => handleDragOver(e, i)}
+                    onDrop={(e) => handleDrop(e, i)}
+                    onDragEnd={handleDragEnd}
+                    className="rounded-xl border px-4 py-3 flex items-center gap-2"
+                    style={{
+                      backgroundColor: isDragOver
+                        ? "color-mix(in srgb, var(--book-accent, #fbbf24) 15%, var(--book-chrome-surface, rgba(255,255,255,0.04)))"
+                        : "var(--book-chrome-surface, rgba(255,255,255,0.04))",
+                      borderColor: isDragOver
+                        ? "var(--book-accent, #fbbf24)"
+                        : "var(--book-chrome-border, rgba(255,255,255,0.06))",
+                      opacity: isDragging ? 0.4 : 1,
+                    }}
+                  >
+                    {isOwner && (
+                      <span
+                        className="shrink-0 cursor-grab active:cursor-grabbing hidden sm:block"
+                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                        aria-hidden="true"
                       >
-                        <ChevronUp className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveSong(i, i + 1)}
-                        disabled={i === orderedSongs.length - 1 || saving}
-                        className="p-1 disabled:opacity-25"
-                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
-                        aria-label="곡을 아래로 이동"
-                      >
-                        <ChevronDown className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
+                        <GripVertical className="h-4 w-4" />
+                      </span>
+                    )}
+                    <span
+                      className="text-[12px] w-4 shrink-0"
+                      style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                    >
+                      {i + 1}
+                    </span>
                     <button
                       type="button"
-                      onClick={() => removeSong(song.id)}
-                      className="p-1.5 hover:text-red-400 shrink-0"
-                      style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
-                      aria-label="플레이리스트에서 제거"
+                      onClick={() => navigate(`/books/${ownerId}/songs/${song.id}`)}
+                      className="flex-1 min-w-0 text-left"
                     >
-                      <X className="h-3.5 w-3.5" />
+                      <div className="text-[14.5px] font-medium truncate">{song.title}</div>
+                      <div
+                        className="text-[12px] truncate"
+                        style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
+                      >
+                        {song.artist}
+                      </div>
                     </button>
+                    {isOwner && (
+                      <div className="flex items-center shrink-0">
+                        <div className="flex flex-col">
+                          <button
+                            type="button"
+                            onClick={() => moveSong(i, i - 1)}
+                            disabled={i === 0 || saving}
+                            className="p-1 disabled:opacity-25"
+                            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                            aria-label="곡을 위로 이동"
+                          >
+                            <ChevronUp className="h-3.5 w-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => moveSong(i, i + 1)}
+                            disabled={i === orderedSongs.length - 1 || saving}
+                            className="p-1 disabled:opacity-25"
+                            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+                            aria-label="곡을 아래로 이동"
+                          >
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeSong(song.id)}
+                          className="p-1.5 hover:text-red-400 shrink-0"
+                          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
+                          aria-label="플레이리스트에서 제거"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

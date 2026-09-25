@@ -49,8 +49,8 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-16 min-h-screen" style={bookStyle}>
-      <div className="px-5 pt-5">
+    <div className="max-w-md lg:max-w-5xl mx-auto pb-16 min-h-screen" style={bookStyle}>
+      <div className="px-5 lg:px-8 pt-5">
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
           className="flex items-center gap-1 text-[13px]"
@@ -60,8 +60,8 @@ export function PlaylistsPage() {
         </button>
       </div>
 
-      <div className="px-5 pt-3 pb-4">
-        <h1 className="text-[22px] font-semibold font-serif">플레이리스트</h1>
+      <div className="px-5 lg:px-8 pt-3 pb-4">
+        <h1 className="text-[22px] lg:text-[26px] font-semibold font-serif">플레이리스트</h1>
         <p
           className="text-[13px] mt-1"
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
@@ -71,7 +71,7 @@ export function PlaylistsPage() {
       </div>
 
       {isOwner && (
-        <div className="px-5 flex gap-2 mb-2">
+        <div className="px-5 lg:px-8 flex gap-2 mb-2 lg:max-w-md">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -97,7 +97,7 @@ export function PlaylistsPage() {
       )}
 
       {loading && (
-        <p className="px-5 text-sm mt-6" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+        <p className="px-5 lg:px-8 text-sm mt-6" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
           불러오는 중...
         </p>
       )}
@@ -116,11 +116,11 @@ export function PlaylistsPage() {
       )}
 
       {!loading && playlists.length > 0 && (
-        <div className="px-5 flex flex-col gap-2 mt-2">
+        <div className="px-5 lg:px-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-2">
           {playlists.map((p) => (
             <div
               key={p.id}
-              className="rounded-xl border px-4 py-3.5 flex items-center justify-between"
+              className="rounded-xl border px-4 py-3.5 flex items-center justify-between min-w-0"
               style={{
                 backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.04))",
                 borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))",

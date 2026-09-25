@@ -40,7 +40,7 @@ export function SettingsPage() {
     "w-full rounded-lg bg-white/[0.06] border border-white/10 px-3 py-2.5 text-[14px] text-white outline-none focus:border-amber-400/50";
 
   return (
-    <div className="max-w-md mx-auto min-h-screen px-5 pt-8 pb-16">
+    <div className="max-w-md lg:max-w-2xl mx-auto min-h-screen px-5 lg:px-8 pt-8 pb-16">
       <button
         onClick={() => navigate(-1)}
         className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
@@ -58,7 +58,7 @@ export function SettingsPage() {
         </p>
       )}
 
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <div>
           <label className={labelCls}>가사 글자 크기 (노래 부르기 화면 기본값)</label>
           <select
@@ -128,7 +128,7 @@ export function SettingsPage() {
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-3 lg:col-span-2">
           <div>
             <label className={labelCls}>배경색</label>
             <input
@@ -160,7 +160,7 @@ export function SettingsPage() {
 
         {/* 즉시 미리보기 */}
         <div
-          className="rounded-xl border border-white/10 p-4"
+          className="rounded-xl border border-white/10 p-4 lg:col-span-2"
           style={{ backgroundColor: preferences.backgroundColor }}
         >
           <p
@@ -193,7 +193,7 @@ export function SettingsPage() {
           </select>
         </div>
 
-        <p className="text-[12px] text-white/30 leading-relaxed">
+        <p className="text-[12px] text-white/30 leading-relaxed lg:col-span-2">
           여기서 정한 글자 크기는 노래 부르기 화면을 열 때 기본값으로 쓰여요. 노래
           부르기 화면 안에서 그때그때 크기를 바꾸는 건 그 세션에서만 잠깐
           적용되는 임시 조정이고, 여기 설정은 안 바뀌어요.

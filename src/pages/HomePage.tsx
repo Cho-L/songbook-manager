@@ -14,6 +14,7 @@ import {
   StarOff,
   ListPlus,
   Palette,
+  Info,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import type { SortOption } from "../types/song";
@@ -33,15 +34,13 @@ import { profileRepository } from "../services/profileRepository";
 import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
 import { getChromeCssVars } from "../utils/color";
+import { songsToJSON, songsToCSV, downloadTextFile, BackupParseError } from "../utils/backup";
 import {
-  songsToJSON,
-  songsToCSV,
-  downloadTextFile,
-  parseSongsJSON,
-  parseSongsCSV,
-  BackupParseError,
-  type ImportResult,
-} from "../utils/backup";
+  normalizeImportedCSV,
+  normalizeImportedJSON,
+  detectImportFormat,
+  type FlexibleImportResult,
+} from "../utils/importNormalize";
 import type { Song, SongFormInput } from "../types/song";
 
 interface HomePageProps {
@@ -101,7 +100,8 @@ export function HomePage({
   const [pageSize, setPageSize] = useState(30);
 
   const [importing, setImporting] = useState(false);
-  const [importPreview, setImportPreview] = useState<ImportResult | null>(null);
+  const [importPreview, setImportPreview] = useState<FlexibleImportResult | null>(null);
+  const [showImportHelp, setShowImportHelp] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -191,8 +191,8 @@ export function HomePage({
     setImporting(true);
     try {
       const text = await file.text();
-      const isCSV = file.name.toLowerCase().endsWith(".csv");
-      const result = isCSV ? parseSongsCSV(text) : parseSongsJSON(text);
+      const format = detectImportFormat(file.name);
+      const result = format === "csv" ? normalizeImportedCSV(text) : normalizeImportedJSON(text);
       setImportPreview(result);
     } catch (err) {
       if (err instanceof BackupParseError) {
@@ -531,7 +531,47 @@ export function HomePage({
 
       {isOwner && songs.length > 0 && (
         <div className="px-5 mt-8">
-          <p className="text-[11px] text-white/30 mb-2">데이터 백업</p>
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-[11px] text-white/30">데이터 백업</p>
+            <button
+              type="button"
+              onClick={() => setShowImportHelp((v) => !v)}
+              className="flex items-center gap-1 text-[11px] text-white/40 hover:text-white/70"
+            >
+              <Info className="h-3 w-3" /> {showImportHelp ? "안내 닫기" : "사용법"}
+            </button>
+          </div>
+
+          {showImportHelp && (
+            <div className="rounded-lg bg-white/[0.03] border border-white/[0.06] p-3 mb-3 text-[12px] text-white/50 leading-relaxed space-y-2">
+              <p>
+                <span className="text-white/70">가져오기(Import)</span> — CSV 또는 JSON 파일을 가져올
+                수 있어요. CSV는 컬럼명을 기준으로 자동 매핑해서 컬럼 순서가 달라도 정상적으로
+                인식하고, 일부 필드가 없거나 모르는 필드가 섞여 있어도 인식 가능한 데이터는 최대한
+                가져와요. 인식되지 않은 필드는 미리보기에서 확인할 수 있고, 제목(title)을 확인할 수
+                없는 행만 가져오기 대상에서 제외돼요.
+              </p>
+              <p>
+                처리 순서: 파일 선택 → 형식 감지 → 필드 자동 매핑 → 값 정리 → 미리보기 확인 → 저장.
+                파일을 선택해도 바로 저장되지 않고, 미리보기에서 확인한 뒤 "가져오기" 버튼을 눌러야
+                실제로 저장돼요.
+              </p>
+              <p>
+                예시 CSV:{" "}
+                <code className="text-white/70">title,artist,difficulty</code> 또는{" "}
+                <code className="text-white/70">노래제목,가수,난이도</code>
+                {" · "}예시 JSON:{" "}
+                <code className="text-white/70">{`[{"title":"밤편지","artist":"아이유"}]`}</code>
+              </p>
+              <p>
+                <span className="text-white/70">내보내기(Export)</span> — 현재 노래책의 곡 데이터를
+                JSON 또는 CSV 파일로 저장할 수 있어요. 내보낸 파일은 나중에 다시 가져오기에 쓸 수
+                있어요. 단, 곡 정보만 포함되고 즐겨찾기·플레이리스트·노래책 디자인은 파일에
+                포함되지 않아요.
+              </p>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -595,9 +635,25 @@ export function HomePage({
           <div className="w-full max-w-md rounded-2xl bg-[#14161F] border border-white/10 p-5 max-h-[80vh] overflow-y-auto">
             <h2 className="text-[16px] font-semibold">가져오기 미리보기</h2>
             <p className="text-[13px] text-white/60 mt-2">
-              총 {importPreview.totalRows}곡 — 정상 {importPreview.valid.length}곡, 오류{" "}
+              감지된 형식: {importPreview.detectedFormat === "csv" ? "CSV" : "JSON"} · 총{" "}
+              {importPreview.totalRows}곡 — 정상 {importPreview.valid.length}곡, 오류{" "}
               {importPreview.errors.length}곡
             </p>
+            <p className="text-[12px] text-white/40 mt-1">
+              매핑된 필드 {importPreview.mappedFieldCount}개
+              {importPreview.unrecognizedFields.length > 0 &&
+                ` · 인식되지 않은 컬럼: ${importPreview.unrecognizedFields.join(", ")}`}
+            </p>
+
+            {importPreview.warnings.length > 0 && (
+              <div className="mt-3 rounded-lg bg-amber-400/5 border border-amber-400/20 p-3 max-h-32 overflow-y-auto">
+                {importPreview.warnings.map((w, i) => (
+                  <p key={i} className="text-[12px] text-amber-300/90">
+                    {w.row}번째 행: {w.message}
+                  </p>
+                ))}
+              </div>
+            )}
 
             {importPreview.errors.length > 0 && (
               <div className="mt-3 rounded-lg bg-red-500/5 border border-red-400/20 p-3 max-h-40 overflow-y-auto">

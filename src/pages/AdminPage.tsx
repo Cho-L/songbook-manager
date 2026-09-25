@@ -67,7 +67,7 @@ export function AdminPage() {
 
   if (authLoading) {
     return (
-      <div className="max-w-md mx-auto px-5 pt-10 text-center text-white/40 text-sm">
+      <div className="max-w-md lg:max-w-2xl mx-auto px-5 pt-10 text-center text-white/40 text-sm">
         확인 중...
       </div>
     );
@@ -79,7 +79,7 @@ export function AdminPage() {
   }
 
   return (
-    <div className="max-w-md mx-auto min-h-screen px-5 pt-8 pb-10">
+    <div className="max-w-md lg:max-w-2xl mx-auto min-h-screen px-5 lg:px-8 pt-8 pb-10">
       <button
         onClick={() => navigate("/")}
         className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
@@ -93,7 +93,7 @@ export function AdminPage() {
       {error && <p className="text-red-400 text-sm mt-8">{error}</p>}
 
       {!loading && !error && (
-        <div className="mt-6 flex flex-col gap-2">
+        <div className="mt-6 grid gap-2 lg:grid-cols-2">
           {rows.map((row) => (
             <div
               key={row.profile.id}

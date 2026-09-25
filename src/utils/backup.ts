@@ -1,8 +1,8 @@
 import type { Song, SongFormInput } from "../types/song";
 import { parseCSV } from "./csv";
 
-const FORMAT_NAME = "songbook-manager";
-const FORMAT_VERSION = 1;
+export const FORMAT_NAME = "songbook-manager";
+export const FORMAT_VERSION = 1;
 
 /** SongFormInput만 남긴 백업용 형태 (id/ownerId/favorite/생성일 등은 export에 포함하지 않음) */
 type BackupSong = SongFormInput;

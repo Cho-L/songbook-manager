@@ -155,8 +155,8 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-16">
-      <div className="flex items-center justify-between px-4 pt-5 pb-2">
+    <div className="max-w-md lg:max-w-3xl mx-auto pb-16">
+      <div className="flex items-center justify-between px-4 lg:px-8 pt-5 pb-2">
         <button
           onClick={handleCancel}
           className="p-2 -ml-2 text-white/60"
@@ -181,28 +181,30 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <p className="px-5 text-[13px] text-red-400 mt-1">{saveError}</p>
       )}
 
-      <div className="px-5 pt-3 flex flex-col gap-4">
-        <div>
-          <label className={labelCls}>제목 *</label>
-          <input
-            className={inputCls}
-            value={form.title}
-            onChange={(e) => setField("title", e.target.value)}
-          />
-          {errors.title && (
-            <p className="text-xs text-red-400 mt-1">{errors.title}</p>
-          )}
-        </div>
-        <div>
-          <label className={labelCls}>가수 *</label>
-          <input
-            className={inputCls}
-            value={form.artist}
-            onChange={(e) => setField("artist", e.target.value)}
-          />
-          {errors.artist && (
-            <p className="text-xs text-red-400 mt-1">{errors.artist}</p>
-          )}
+      <div className="px-5 lg:px-8 pt-3 flex flex-col gap-4">
+        <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 space-y-4">
+          <div>
+            <label className={labelCls}>제목 *</label>
+            <input
+              className={inputCls}
+              value={form.title}
+              onChange={(e) => setField("title", e.target.value)}
+            />
+            {errors.title && (
+              <p className="text-xs text-red-400 mt-1">{errors.title}</p>
+            )}
+          </div>
+          <div>
+            <label className={labelCls}>가수 *</label>
+            <input
+              className={inputCls}
+              value={form.artist}
+              onChange={(e) => setField("artist", e.target.value)}
+            />
+            {errors.artist && (
+              <p className="text-xs text-red-400 mt-1">{errors.artist}</p>
+            )}
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -303,26 +305,28 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           )}
         </div>
 
-        <div>
-          <label className={labelCls}>메모</label>
-          <textarea
-            className={inputCls + " min-h-[70px]"}
-            value={form.memo}
-            onChange={(e) => setField("memo", e.target.value)}
-          />
-        </div>
-        <div>
-          <label className={labelCls}>코드</label>
-          <textarea
-            className={inputCls + " min-h-[80px] font-mono"}
-            value={form.chords}
-            onChange={(e) => setField("chords", e.target.value)}
-          />
+        <div className="lg:grid lg:grid-cols-2 lg:gap-3 space-y-4 lg:space-y-0">
+          <div>
+            <label className={labelCls}>메모</label>
+            <textarea
+              className={inputCls + " min-h-[70px]"}
+              value={form.memo}
+              onChange={(e) => setField("memo", e.target.value)}
+            />
+          </div>
+          <div>
+            <label className={labelCls}>코드</label>
+            <textarea
+              className={inputCls + " min-h-[70px] lg:min-h-[80px] font-mono"}
+              value={form.chords}
+              onChange={(e) => setField("chords", e.target.value)}
+            />
+          </div>
         </div>
         <div>
           <label className={labelCls}>가사</label>
           <textarea
-            className={inputCls + " min-h-[160px]"}
+            className={inputCls + " min-h-[160px] lg:min-h-[280px]"}
             value={form.lyrics}
             onChange={(e) => setField("lyrics", e.target.value)}
           />
