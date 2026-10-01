@@ -67,7 +67,7 @@ export function BookDesignPage() {
     <div className="max-w-md lg:max-w-5xl mx-auto min-h-screen px-5 lg:px-8 pt-8 pb-16">
       <button
         onClick={() => navigate(`/books/${ownerId}`)}
-        className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+        className="flex items-center gap-1 py-1.5 text-[13px] text-white/40 hover:text-white/70"
       >
         <ChevronLeft className="h-4 w-4" /> 노래책으로
       </button>
@@ -88,7 +88,7 @@ export function BookDesignPage() {
         <div className="flex flex-col gap-5 order-2 lg:order-1">
           <div>
             <label className={labelCls}>디자인 프리셋</label>
-            <select
+            <select aria-label="디자인 프리셋"
               className={selectCls}
               value={design.preset}
               onChange={(e) => {
@@ -111,7 +111,7 @@ export function BookDesignPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className={labelCls}>강조색</label>
-              <input
+              <input aria-label="강조색"
                 type="color"
                 value={design.accentColor}
                 onChange={(e) => update({ accentColor: e.target.value })}
@@ -120,7 +120,7 @@ export function BookDesignPage() {
             </div>
             <div>
               <label className={labelCls}>배경색</label>
-              <input
+              <input aria-label="배경색"
                 type="color"
                 value={design.backgroundColor}
                 onChange={(e) => update({ backgroundColor: e.target.value })}
@@ -129,7 +129,7 @@ export function BookDesignPage() {
             </div>
             <div>
               <label className={labelCls}>카드 표면색</label>
-              <input
+              <input aria-label="카드 표면색"
                 type="color"
                 value={design.surfaceColor}
                 onChange={(e) => update({ surfaceColor: e.target.value })}
@@ -138,7 +138,7 @@ export function BookDesignPage() {
             </div>
             <div>
               <label className={labelCls}>텍스트 색상</label>
-              <input
+              <input aria-label="텍스트 색상"
                 type="color"
                 value={design.textColor}
                 onChange={(e) => update({ textColor: e.target.value })}
@@ -150,7 +150,7 @@ export function BookDesignPage() {
           <div className="grid sm:grid-cols-2 gap-5">
             <div>
               <label className={labelCls}>노래책 제목 (비워두면 기본값)</label>
-              <input
+              <input aria-label="노래책 제목 (비워두면 기본값)"
                 className={inputCls}
                 value={design.title ?? ""}
                 onChange={(e) => update({ title: e.target.value || null })}
@@ -159,7 +159,7 @@ export function BookDesignPage() {
             </div>
             <div>
               <label className={labelCls}>소개 문구 (선택)</label>
-              <input
+              <input aria-label="소개 문구 (선택)"
                 className={inputCls}
                 value={design.description ?? ""}
                 onChange={(e) => update({ description: e.target.value || null })}
@@ -170,7 +170,7 @@ export function BookDesignPage() {
 
           <div>
             <label className={labelCls}>곡 표시 방식</label>
-            <select
+            <select aria-label="곡 표시 방식"
               className={selectCls}
               value={design.songDisplay}
               onChange={(e) => update({ songDisplay: e.target.value as SongDisplayMode })}

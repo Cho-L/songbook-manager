@@ -43,7 +43,7 @@ export function SettingsPage() {
     <div className="max-w-md lg:max-w-2xl mx-auto min-h-screen px-5 lg:px-8 pt-8 pb-16">
       <button
         onClick={() => navigate(-1)}
-        className="flex items-center gap-1 text-[13px] text-white/40 hover:text-white/70"
+        className="flex items-center gap-1 py-1.5 text-[13px] text-white/40 hover:text-white/70"
       >
         <ChevronLeft className="h-4 w-4" /> 뒤로가기
       </button>
@@ -61,7 +61,7 @@ export function SettingsPage() {
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <div>
           <label className={labelCls}>가사 글자 크기 (노래 부르기 화면 기본값)</label>
-          <select
+          <select aria-label="가사 글자 크기 (노래 부르기 화면 기본값)"
             className={selectCls}
             value={preferences.lyricsFontSize}
             onChange={(e) => update({ lyricsFontSize: e.target.value as FontSize })}
@@ -76,7 +76,7 @@ export function SettingsPage() {
 
         <div>
           <label className={labelCls}>코드 글자 크기</label>
-          <select
+          <select aria-label="코드 글자 크기"
             className={selectCls}
             value={preferences.chordsFontSize}
             onChange={(e) => update({ chordsFontSize: e.target.value as FontSize })}
@@ -91,7 +91,7 @@ export function SettingsPage() {
 
         <div>
           <label className={labelCls}>폰트</label>
-          <select
+          <select aria-label="폰트"
             className={selectCls}
             value={preferences.fontFamily}
             onChange={(e) => update({ fontFamily: e.target.value as FontFamily })}
@@ -106,7 +106,7 @@ export function SettingsPage() {
 
         <div>
           <label className={labelCls}>테마</label>
-          <select
+          <select aria-label="테마"
             className={selectCls}
             value={preferences.theme}
             onChange={(e) => {
@@ -131,7 +131,7 @@ export function SettingsPage() {
         <div className="grid grid-cols-3 gap-3 lg:col-span-2">
           <div>
             <label className={labelCls}>배경색</label>
-            <input
+            <input aria-label="배경색"
               type="color"
               value={preferences.backgroundColor}
               onChange={(e) => update({ backgroundColor: e.target.value })}
@@ -140,7 +140,7 @@ export function SettingsPage() {
           </div>
           <div>
             <label className={labelCls}>가사 색상</label>
-            <input
+            <input aria-label="가사 색상"
               type="color"
               value={preferences.lyricsColor}
               onChange={(e) => update({ lyricsColor: e.target.value })}
@@ -149,7 +149,7 @@ export function SettingsPage() {
           </div>
           <div>
             <label className={labelCls}>코드 색상</label>
-            <input
+            <input aria-label="코드 색상"
               type="color"
               value={preferences.chordsColor}
               onChange={(e) => update({ chordsColor: e.target.value })}
@@ -180,7 +180,7 @@ export function SettingsPage() {
 
         <div>
           <label className={labelCls}>노래 목록 페이지당 곡 수</label>
-          <select
+          <select aria-label="노래 목록 페이지당 곡 수"
             className={selectCls}
             value={preferences.pageSize}
             onChange={(e) => update({ pageSize: Number(e.target.value) as PageSize })}

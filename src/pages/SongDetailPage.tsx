@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import { DifficultyDots } from "../components/song/DifficultyDots";
 import { ChevronLeft, Mic, Pencil, Trash2, ListPlus } from "lucide-react";
 import type { Song } from "../types/song";
 import { FavoriteButton } from "../components/song/FavoriteButton";
@@ -9,7 +10,7 @@ import { usePlaylists } from "../hooks/usePlaylists";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { playlistRepository } from "../services/playlistRepository";
 import { canManageBook } from "../utils/permissions";
-import { getChromeCssVars } from "../utils/color";
+import { getChromeCssVars, isLightBackground } from "../utils/color";
 
 interface SongDetailPageProps {
   songs: Song[];
@@ -37,7 +38,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
   if (!song) {
     return (
-      <div className="max-w-md lg:max-w-5xl mx-auto px-5 lg:px-8 pt-10 pb-10 min-h-screen text-center" style={bookStyle}>
+      <div className="book-focus max-w-md lg:max-w-5xl mx-auto px-5 lg:px-8 pt-10 pb-10 min-h-screen text-center" style={bookStyle}>
         <p style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}>
           곡을 찾을 수 없어요.
         </p>
@@ -81,7 +82,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   }
 
   return (
-    <div className="max-w-md lg:max-w-5xl mx-auto pb-16 min-h-screen" style={bookStyle}>
+    <div className="book-focus max-w-md lg:max-w-5xl mx-auto pb-16 min-h-screen" style={bookStyle}>
       <div className="flex items-center justify-between px-4 lg:px-8 pt-5 pb-2">
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
@@ -122,9 +123,9 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
       <div className="px-5 lg:px-8 pt-2 lg:grid lg:grid-cols-[340px_1fr] lg:gap-10 lg:items-start">
         <div>
-          <h1 className="text-2xl lg:text-3xl font-semibold font-serif">{song.title}</h1>
+          <h1 className="text-2xl lg:text-3xl font-semibold font-serif break-words">{song.title}</h1>
           <p
-            className="text-sm mt-1"
+            className="text-sm mt-1 break-words"
             style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" }}
           >
             {song.artist}
@@ -140,7 +141,9 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
             {song.key && <span>Key {song.key}</span>}
             {song.bpm && <span>{song.bpm} BPM</span>}
             {song.difficulty && (
-              <span>난이도 {"★".repeat(song.difficulty)}{"☆".repeat(5 - song.difficulty)}</span>
+              <span className="flex items-center gap-2">
+                난이도 <DifficultyDots value={song.difficulty} />
+              </span>
             )}
           </div>
 
@@ -174,7 +177,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
           )}
         </div>
 
-        <div className="mt-5 lg:mt-0">
+        <div className="mt-5 lg:mt-0 min-w-0">
           <button
             onClick={() => navigate(`/books/${ownerId}/songs/${song.id}/sing`)}
             className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 text-[15px]"
@@ -237,8 +240,12 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
                 코드
               </div>
               <pre
-                className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-emerald-300/90 rounded-lg p-3 font-mono"
-                style={{ backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.03))" }}
+                className="whitespace-pre-wrap text-[13.5px] leading-relaxed rounded-lg p-3 font-mono"
+                style={{
+                  backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.03))",
+                  // 밝은 노래책에서는 연한 민트가 배경에 묻혀서, SongMode 밝은 테마와 같은 진한 청록을 쓴다.
+                  color: isLightBackground(design.backgroundColor) ? "#0f766e" : "rgba(110,231,183,0.9)",
+                }}
               >
                 {song.chords}
               </pre>

@@ -11,6 +11,8 @@ import { usePreferences } from "../hooks/usePreferences";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { getChromeCssVars } from "../utils/color";
 import { LinkifiedText } from "../components/song/LinkifiedText";
+import { useLivePublisher } from "../hooks/useLivePublisher";
+import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 import type { Song } from "../types/song";
 
 interface ConcertModePageProps {
@@ -126,6 +128,29 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
   );
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
 
+  // 방송 오버레이로 현재 공연 상태 내보내기. 공연이 끝나면 mode="finished"로 알려 종료 화면을 띄울 수 있게 한다.
+  const liveState = useMemo<LiveStateInput | null>(() => {
+    if (!ownerId || total === 0) return null;
+    const queue = buildLiveQueue(playlistSongIds, songs);
+    if (finished) {
+      return { bookId: ownerId, mode: "finished", lines: [], lineIndex: -1, synced: false, index: total, total, queue };
+    }
+    if (!song) return null;
+    const { lines, lineIndex } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex);
+    return {
+      bookId: ownerId,
+      mode: "concert",
+      song: toLiveSong(song),
+      lines,
+      lineIndex,
+      synced: isSynced,
+      index,
+      total,
+      queue,
+    };
+  }, [ownerId, total, finished, song, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, index]);
+  useLivePublisher(liveState);
+
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
   useEffect(() => {
     if (!isSynced || currentLineIndex < 0) return;
@@ -179,7 +204,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
         <p className="text-sm mb-3" style={{ color: CHROME_MUTED }}>
           이 플레이리스트에는 곡이 없어요.
         </p>
-        <button onClick={exitConcert} className="text-sm" style={{ color: ACCENT }}>
+        <button onClick={exitConcert} className="text-sm px-3 py-2" style={{ color: ACCENT }}>
           돌아가기
         </button>
       </div>
@@ -225,12 +250,12 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
   }
 
   return (
-    <div className="min-h-screen flex flex-col" style={bookStyle}>
+    <div className="book-focus min-h-screen flex flex-col" style={bookStyle}>
       {/* 상단 바 */}
       <div className="flex items-center justify-between px-5 lg:px-8 pt-5 pb-2 shrink-0">
         <button
           onClick={exitConcert}
-          className="flex items-center gap-1 text-[13px]"
+          className="flex items-center gap-1 text-[13px] py-1.5 pr-2"
           style={{ color: CHROME_MUTED }}
         >
           <ChevronLeft className="h-4 w-4" /> 종료
@@ -269,12 +294,12 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
           <h1 className="text-2xl lg:text-3xl font-semibold font-serif break-words">
             {song.title}
           </h1>
-          <p className="text-sm mt-0.5 mb-1" style={{ color: CHROME_MUTED }}>
+          <p className="text-sm mt-0.5 mb-1 break-words" style={{ color: CHROME_MUTED }}>
             {song.artist}
           </p>
 
           {nextSong && (
-            <p className="text-[12.5px] mb-4" style={{ color: CHROME_MUTED }}>
+            <p className="text-[12.5px] mb-4 break-words" style={{ color: CHROME_MUTED }}>
               다음 곡 · {nextSong.title}
             </p>
           )}
@@ -337,6 +362,9 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
               <Music2 className="h-7 w-7 mb-2" strokeWidth={1.5} style={{ color: CHROME_MUTED }} />
               <p className="text-sm" style={{ color: CHROME_MUTED }}>
                 등록된 가사가 없어요
+              </p>
+              <p className="text-[12.5px] mt-1" style={{ color: CHROME_MUTED, opacity: 0.8 }}>
+                곡 정보에 가사를 추가하면 이곳에 표시돼요
               </p>
             </div>
           )}
@@ -405,9 +433,10 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
           onClick={goNext}
           className="flex-1 max-w-[160px] rounded-xl py-3.5 flex items-center justify-center gap-1.5 font-medium"
           style={{ backgroundColor: ACCENT, color: "#14161F" }}
-          aria-label="다음 곡"
+          aria-label={index + 1 >= total ? "공연 마치기" : "다음 곡"}
         >
-          다음 <ChevronRight className="h-4 w-4" />
+          {/* 마지막 곡에서 누르면 "공연 종료" 화면으로 넘어가므로, 실수로 누르지 않게 라벨로 알려준다 */}
+          {index + 1 >= total ? "마치기" : "다음"} <ChevronRight className="h-4 w-4" />
         </button>
       </div>
     </div>

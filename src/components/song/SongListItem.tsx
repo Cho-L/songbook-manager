@@ -17,6 +17,36 @@ interface SongListItemProps {
   onFavoriteClick?: () => void;
 }
 
+/** 리스트형 데스크톱(lg) 컬럼 폭 — 행(SongListItem)과 헤더(SongListHeader)가 같은 값을 써서 수직 정렬을 보장한다. */
+const LIST_COL = {
+  artist: "lg:w-56",
+  key: "lg:w-16",
+  difficulty: "lg:w-20",
+  actions: "lg:w-14",
+};
+
+/** 데스크톱 리스트형 상단의 가벼운 컬럼 헤더 — 카드형/모바일에서는 렌더링하지 않는다(hidden lg:flex). */
+export function SongListHeader({ selectionMode = false }: { selectionMode?: boolean }) {
+  return (
+    <div
+      className="hidden lg:flex items-center gap-3 px-4 pb-0.5 text-[11px] tracking-wide border border-transparent"
+      style={{ color: "color-mix(in srgb, var(--book-chrome-text, #ffffff) 32%, transparent)" }}
+      aria-hidden="true"
+    >
+      {selectionMode && <span className="w-5 shrink-0" />}
+      <div className="flex-1 min-w-0 flex items-center gap-4">
+        <span className="flex-1 min-w-0">제목</span>
+        <span className={`shrink-0 ${LIST_COL.artist}`}>가수</span>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className={LIST_COL.key}>Key</span>
+        <span className={LIST_COL.difficulty}>난이도</span>
+        <span className={LIST_COL.actions} />
+      </div>
+    </div>
+  );
+}
+
 function SelectCheckbox({ selected }: { selected: boolean }) {
   return (
     <span
@@ -60,7 +90,7 @@ function FavoriteStar({ isFavorite, onFavoriteClick, size }: FavoriteStarProps) 
       }}
       aria-label={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
       aria-pressed={isFavorite}
-      className="p-0.5 -m-0.5"
+      className="p-2 -m-2 rounded-full"
     >
       <Star className={iconCls} style={style} />
     </button>
@@ -101,7 +131,7 @@ export function SongListItem({
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && (selectionMode ? onToggleSelect?.() : onClick())}
         aria-pressed={selectionMode ? selected : undefined}
-        className="text-left rounded-2xl border flex flex-col gap-4 transition w-full h-full p-5 cursor-pointer"
+        className="text-left rounded-2xl border flex flex-col gap-4 transition-[filter] duration-150 hover:brightness-110 active:brightness-95 w-full h-full p-5 cursor-pointer"
         style={
           selectedStyle ?? {
             backgroundColor: "color-mix(in srgb, var(--book-surface, #ffffff) 6%, transparent)",
@@ -139,14 +169,14 @@ export function SongListItem({
           className="flex items-center gap-3 text-[11px]"
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.35))" }}
         >
+          {song.key && <span className="text-[12px]">Key {song.key}</span>}
           <DifficultyDots value={song.difficulty} />
-          {song.key && <span>Key {song.key}</span>}
         </div>
 
         {/* 구분선 + 액션 영역 */}
         <div
           className="flex items-center justify-between pt-3 mt-auto border-t"
-          style={{ borderColor: "color-mix(in srgb, var(--book-surface, #ffffff) 12%, transparent)" }}
+          style={{ borderColor: "color-mix(in srgb, var(--book-surface, #ffffff) 8%, transparent)" }}
         >
           {!selectionMode ? (
             <FavoriteStar isFavorite={isFavorite} onFavoriteClick={onFavoriteClick} size="md" />
@@ -158,7 +188,7 @@ export function SongListItem({
               type="button"
               onClick={handlePlayClick}
               aria-label="노래 부르기"
-              className="h-7 w-7 rounded-full flex items-center justify-center"
+              className="h-7 w-7 rounded-full flex items-center justify-center transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
               style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
             >
               <Play className="h-3.5 w-3.5" fill="currentColor" />
@@ -177,7 +207,7 @@ export function SongListItem({
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && (selectionMode ? onToggleSelect?.() : onClick())}
       aria-pressed={selectionMode ? selected : undefined}
-      className="text-left rounded-xl border px-4 py-3.5 flex items-center gap-3 transition w-full cursor-pointer"
+      className="text-left rounded-xl border px-4 py-3.5 flex items-center gap-3 transition-[filter] duration-150 hover:brightness-110 active:brightness-95 w-full cursor-pointer"
       style={
         selectedStyle ?? {
           backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.04))",
@@ -186,10 +216,11 @@ export function SongListItem({
       }
     >
       {selectionMode && <SelectCheckbox selected={selected} />}
-      <div className="min-w-0 flex-1">
-        <div className="text-[15px] font-medium truncate">{song.title}</div>
+      {/* 데스크톱(lg)에서는 제목/가수를 별도 컬럼으로 분리 — SongListHeader와 폭 상수를 공유해 수직 정렬 */}
+      <div className="min-w-0 flex-1 lg:flex lg:items-center lg:gap-4">
+        <div className="text-[15px] font-medium truncate lg:flex-1 lg:min-w-0">{song.title}</div>
         <div
-          className="text-[12.5px] truncate mt-0.5"
+          className={`text-[12.5px] truncate mt-0.5 lg:mt-0 lg:shrink-0 ${LIST_COL.artist}`}
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}
         >
           {song.artist}
@@ -197,21 +228,31 @@ export function SongListItem({
         </div>
       </div>
       <div className="flex items-center gap-3 shrink-0">
-        <DifficultyDots value={song.difficulty} />
-        {!selectionMode && (
-          <FavoriteStar isFavorite={isFavorite} onFavoriteClick={onFavoriteClick} size="sm" />
-        )}
-        {onPlayClick && (
-          <button
-            type="button"
-            onClick={handlePlayClick}
-            aria-label="노래 부르기"
-            className="h-6 w-6 rounded-full flex items-center justify-center"
-            style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
-          >
-            <Play className="h-3 w-3" fill="currentColor" />
-          </button>
-        )}
+        <span
+          className={`${song.key ? "hidden sm:inline-block" : "hidden lg:inline-block"} text-[11.5px] ${LIST_COL.key}`}
+          style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
+        >
+          {song.key ? `Key ${song.key}` : ""}
+        </span>
+        <div className={LIST_COL.difficulty}>
+          <DifficultyDots value={song.difficulty} />
+        </div>
+        <div className={`flex items-center gap-3 lg:justify-end ${LIST_COL.actions}`}>
+          {!selectionMode && (
+            <FavoriteStar isFavorite={isFavorite} onFavoriteClick={onFavoriteClick} size="sm" />
+          )}
+          {onPlayClick && (
+            <button
+              type="button"
+              onClick={handlePlayClick}
+              aria-label="노래 부르기"
+              className="h-7 w-7 rounded-full flex items-center justify-center transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
+              style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
+            >
+              <Play className="h-3 w-3" fill="currentColor" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

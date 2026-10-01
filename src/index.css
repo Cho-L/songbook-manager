@@ -20,3 +20,40 @@ body {
 .book-input::placeholder {
   color: var(--book-chrome-muted, rgba(255, 255, 255, 0.3));
 }
+
+/* 키보드 포커스 링 — 노래책 accent 색을 따라가며, 마우스 클릭/hover에는 나타나지 않는다(:focus-visible).
+   Detail/Playlist 화면처럼 브라우저 기본 링이 어색하던 곳에만 .book-focus를 붙여 쓴다. */
+.book-focus button:focus-visible,
+.book-focus select:focus-visible,
+.book-focus [role="button"]:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--book-accent, #fbbf24) 80%, transparent);
+  outline-offset: 2px;
+}
+
+/* 방송 오버레이: 가사가 바뀔 때 아주 짧게 나타나는 효과 (시선을 빼앗지 않는 정도) */
+@keyframes overlay-line-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.25em);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.overlay-line-in {
+  animation: overlay-line-in 220ms ease-out;
+}
+
+/* 방송 오버레이: 곡이 바뀔 때 새 내용이 부드럽게 나타나는 효과 / 가사 페이드 옵션 */
+@keyframes overlay-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.overlay-fade-in {
+  animation: overlay-fade-in 200ms ease-out;
+}

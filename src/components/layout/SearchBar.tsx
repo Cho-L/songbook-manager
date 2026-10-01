@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Search, X } from "lucide-react";
 
 interface SearchBarProps {
@@ -5,6 +6,8 @@ interface SearchBarProps {
   onChange: (value: string) => void;
   favOnly: boolean;
   onToggleFavOnly: () => void;
+  /** 즐겨찾기 필터와 같은 줄(오른쪽)에 놓을 보조 도구 — 선택/정렬처럼 목록을 다루는 컨트롤 */
+  actions?: ReactNode;
 }
 
 export function SearchBar({
@@ -12,6 +15,7 @@ export function SearchBar({
   onChange,
   favOnly,
   onToggleFavOnly,
+  actions,
 }: SearchBarProps) {
   return (
     <div
@@ -27,10 +31,9 @@ export function SearchBar({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder="제목, 가수, 장르, 태그 검색"
-          className="book-input w-full rounded-xl pl-9 pr-9 py-2.5 text-sm outline-none transition border"
+          className="book-input w-full rounded-xl pl-9 pr-9 py-2.5 text-sm outline-none transition-colors border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] focus:border-[color:var(--book-accent,#fbbf24)]"
           style={{
             backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.06))",
-            borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))",
             color: "var(--book-text, #ffffff)",
           }}
         />
@@ -45,10 +48,13 @@ export function SearchBar({
           </button>
         )}
       </div>
+      {/* 검색 아래 "도구 줄": 필터 칩(왼쪽) + 선택/정렬(오른쪽)을 한 줄로 묶는다 */}
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-2">
       <button
         type="button"
         onClick={onToggleFavOnly}
-        className="mt-2.5 text-xs px-3 py-1.5 rounded-full border transition"
+        aria-pressed={favOnly}
+        className="text-xs px-3 py-1.5 rounded-full border transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
         style={
           favOnly
             ? {
@@ -65,6 +71,8 @@ export function SearchBar({
       >
         ★ 즐겨찾기만 보기
       </button>
+      {actions}
+      </div>
     </div>
   );
 }

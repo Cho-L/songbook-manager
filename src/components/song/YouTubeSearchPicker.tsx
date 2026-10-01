@@ -47,6 +47,7 @@ export function YouTubeSearchPicker({
 
       <div className="flex gap-2">
         <input
+          aria-label="YouTube 검색어"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
@@ -56,6 +57,8 @@ export function YouTubeSearchPicker({
         <button
           type="button"
           onClick={handleSearch}
+          aria-label="YouTube 검색"
+          title="YouTube 검색"
           className="px-3 rounded-lg bg-white/[0.08] border border-white/10 text-white/70"
         >
           <Search className="h-4 w-4" />

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, ChevronUp, ChevronDown, GripVertical, Play, X, Plus, Check } from "lucide-react";
+import { ChevronLeft, ChevronUp, ChevronDown, GripVertical, Play, X, Plus, Check, ListMusic } from "lucide-react";
+import { EmptyNotice } from "../components/song/EmptyState";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
 import { useSongs } from "../hooks/useSongs";
 import { useAuth } from "../hooks/useAuth";
@@ -140,11 +141,11 @@ export function PlaylistDetailPage() {
   }
 
   return (
-    <div className="max-w-md lg:max-w-4xl mx-auto pb-16 min-h-screen" style={bookStyle}>
+    <div className="book-focus max-w-md lg:max-w-4xl mx-auto pb-16 min-h-screen" style={bookStyle}>
       <div className="px-5 lg:px-8 pt-5">
         <button
           onClick={() => navigate(`/books/${ownerId}/playlists`)}
-          className="flex items-center gap-1 text-[13px]"
+          className="flex items-center gap-1 py-1.5 text-[13px]"
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
         >
           <ChevronLeft className="h-4 w-4" /> 플레이리스트 목록으로
@@ -286,7 +287,7 @@ export function PlaylistDetailPage() {
         </div>
 
         {/* 우측(PC) / 본문(모바일): 곡 목록 */}
-        <div className="mt-5 lg:mt-0">
+        <div className="mt-5 lg:mt-0 min-w-0">
           {loading && (
             <p className="text-sm" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
               불러오는 중...
@@ -294,12 +295,11 @@ export function PlaylistDetailPage() {
           )}
 
           {!loading && orderedSongs.length === 0 && (
-            <p
-              className="text-[13px]"
-              style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
-            >
-              아직 곡이 없어요. "곡 추가" 버튼으로 넣어보세요.
-            </p>
+            <EmptyNotice
+              icon={<ListMusic className="h-5 w-5" strokeWidth={1.5} />}
+              title="아직 곡이 없어요"
+              description={isOwner ? '"곡 추가" 버튼으로 이 플레이리스트에 곡을 담아보세요' : "이 플레이리스트에는 아직 곡이 담기지 않았어요"}
+            />
           )}
 
           {!loading && orderedSongs.length > 0 && (
@@ -315,7 +315,7 @@ export function PlaylistDetailPage() {
                     onDragOver={(e) => handleDragOver(e, i)}
                     onDrop={(e) => handleDrop(e, i)}
                     onDragEnd={handleDragEnd}
-                    className="rounded-xl border px-4 py-3 flex items-center gap-2"
+                    className="rounded-xl border px-4 py-3 flex items-center gap-2 transition-[filter] duration-150 hover:brightness-110"
                     style={{
                       backgroundColor: isDragOver
                         ? "color-mix(in srgb, var(--book-accent, #fbbf24) 15%, var(--book-chrome-surface, rgba(255,255,255,0.04)))"
@@ -361,7 +361,7 @@ export function PlaylistDetailPage() {
                             type="button"
                             onClick={() => moveSong(i, i - 1)}
                             disabled={i === 0 || saving}
-                            className="p-1 disabled:opacity-25"
+                            className="p-1.5 disabled:opacity-25"
                             style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                             aria-label="곡을 위로 이동"
                           >
@@ -371,7 +371,7 @@ export function PlaylistDetailPage() {
                             type="button"
                             onClick={() => moveSong(i, i + 1)}
                             disabled={i === orderedSongs.length - 1 || saving}
-                            className="p-1 disabled:opacity-25"
+                            className="p-1.5 disabled:opacity-25"
                             style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                             aria-label="곡을 아래로 이동"
                           >

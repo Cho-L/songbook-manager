@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useLocation, useParams } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { canManageBook } from "../utils/permissions";
 
@@ -16,6 +16,7 @@ interface RequireOwnerProps {
  */
 export function RequireOwner({ children }: RequireOwnerProps) {
   const { ownerId } = useParams();
+  const location = useLocation();
   const { profile, loading } = useAuth();
 
   if (loading) {
@@ -27,7 +28,8 @@ export function RequireOwner({ children }: RequireOwnerProps) {
   }
 
   if (!profile) {
-    return <Navigate to="/admin/login" replace />;
+    // 로그인 후 원래 가려던 화면으로 돌아올 수 있도록 현재 경로를 함께 넘긴다.
+    return <Navigate to="/admin/login" replace state={{ from: location.pathname + location.search }} />;
   }
 
   if (!canManageBook(profile, ownerId)) {

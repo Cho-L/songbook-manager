@@ -12,6 +12,8 @@ import { PlaylistsPage } from "./pages/PlaylistsPage";
 import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BookDesignPage } from "./pages/BookDesignPage";
+import { OverlayPage } from "./pages/OverlayPage";
+import { OverlaySettingsPage } from "./pages/OverlaySettingsPage";
 import { RequireOwner } from "./components/RequireOwner";
 
 /**
@@ -80,6 +82,14 @@ function BookRoutes() {
         element={<ConcertModePage songs={songs} loading={loading} />}
       />
       <Route
+        path="/overlay-settings"
+        element={
+          <RequireOwner>
+            <OverlaySettingsPage />
+          </RequireOwner>
+        }
+      />
+      <Route
         path="/design"
         element={
           <RequireOwner>
@@ -91,7 +101,8 @@ function BookRoutes() {
   );
 }
 
-function App() {
+/** 일반 앱 화면들 — 어두운 배경 래퍼를 쓴다. 방송 오버레이는 이 래퍼 밖에 있어야 배경이 투명해진다. */
+function AppShell() {
   return (
     <div className="min-h-screen bg-[#14161F] text-[#F2F0EA]">
       <Routes>
@@ -102,6 +113,15 @@ function App() {
         <Route path="/books/:ownerId/*" element={<BookRoutes />} />
       </Routes>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/overlay" element={<OverlayPage />} />
+      <Route path="*" element={<AppShell />} />
+    </Routes>
   );
 }
 

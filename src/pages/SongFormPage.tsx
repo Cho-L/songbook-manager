@@ -185,7 +185,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <div className="lg:grid lg:grid-cols-2 lg:gap-3 lg:space-y-0 space-y-4">
           <div>
             <label className={labelCls}>제목 *</label>
-            <input
+            <input aria-label="제목"
               className={inputCls}
               value={form.title}
               onChange={(e) => setField("title", e.target.value)}
@@ -196,7 +196,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           </div>
           <div>
             <label className={labelCls}>가수 *</label>
-            <input
+            <input aria-label="가수"
               className={inputCls}
               value={form.artist}
               onChange={(e) => setField("artist", e.target.value)}
@@ -209,7 +209,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>작곡가</label>
-            <input
+            <input aria-label="작곡가"
               className={inputCls}
               value={form.composer}
               onChange={(e) => setField("composer", e.target.value)}
@@ -217,7 +217,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           </div>
           <div>
             <label className={labelCls}>작사가</label>
-            <input
+            <input aria-label="작사가"
               className={inputCls}
               value={form.lyricist}
               onChange={(e) => setField("lyricist", e.target.value)}
@@ -227,7 +227,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>장르</label>
-            <input
+            <input aria-label="장르"
               className={inputCls}
               value={form.genre}
               onChange={(e) => setField("genre", e.target.value)}
@@ -235,7 +235,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           </div>
           <div>
             <label className={labelCls}>키</label>
-            <input
+            <input aria-label="키"
               className={inputCls}
               value={form.key}
               onChange={(e) => setField("key", e.target.value)}
@@ -245,7 +245,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className={labelCls}>BPM</label>
-            <input
+            <input aria-label="BPM"
               className={inputCls}
               inputMode="numeric"
               value={form.bpm}
@@ -257,7 +257,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           </div>
           <div>
             <label className={labelCls}>난이도 (1~5)</label>
-            <input
+            <input aria-label="난이도 (1~5)"
               className={inputCls}
               inputMode="numeric"
               value={form.difficulty}
@@ -270,7 +270,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         </div>
         <div>
           <label className={labelCls}>태그 (쉼표로 구분)</label>
-          <input
+          <input aria-label="태그 (쉼표로 구분)"
             className={inputCls}
             value={form.tags}
             onChange={(e) => setField("tags", e.target.value)}
@@ -308,7 +308,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         <div className="lg:grid lg:grid-cols-2 lg:gap-3 space-y-4 lg:space-y-0">
           <div>
             <label className={labelCls}>메모</label>
-            <textarea
+            <textarea aria-label="메모"
               className={inputCls + " min-h-[70px]"}
               value={form.memo}
               onChange={(e) => setField("memo", e.target.value)}
@@ -316,7 +316,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
           </div>
           <div>
             <label className={labelCls}>코드</label>
-            <textarea
+            <textarea aria-label="코드"
               className={inputCls + " min-h-[70px] lg:min-h-[80px] font-mono"}
               value={form.chords}
               onChange={(e) => setField("chords", e.target.value)}
@@ -325,7 +325,7 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
         </div>
         <div>
           <label className={labelCls}>가사</label>
-          <textarea
+          <textarea aria-label="가사"
             className={inputCls + " min-h-[160px] lg:min-h-[280px]"}
             value={form.lyrics}
             onChange={(e) => setField("lyrics", e.target.value)}

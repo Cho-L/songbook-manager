@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, Plus, Trash2, ListMusic } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Trash2, ListMusic } from "lucide-react";
 import { usePlaylists } from "../hooks/usePlaylists";
 import { useAuth } from "../hooks/useAuth";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { canManageBook } from "../utils/permissions";
 import { getChromeCssVars } from "../utils/color";
+import { EmptyNotice } from "../components/song/EmptyState";
 
 export function PlaylistsPage() {
   const { ownerId } = useParams();
@@ -49,11 +50,11 @@ export function PlaylistsPage() {
   }
 
   return (
-    <div className="max-w-md lg:max-w-5xl mx-auto pb-16 min-h-screen" style={bookStyle}>
+    <div className="book-focus max-w-md lg:max-w-5xl mx-auto pb-16 min-h-screen" style={bookStyle}>
       <div className="px-5 lg:px-8 pt-5">
         <button
           onClick={() => navigate(`/books/${ownerId}`)}
-          className="flex items-center gap-1 text-[13px]"
+          className="flex items-center gap-1 py-1.5 text-[13px]"
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
         >
           <ChevronLeft className="h-4 w-4" /> 노래책으로
@@ -73,6 +74,7 @@ export function PlaylistsPage() {
       {isOwner && (
         <div className="px-5 lg:px-8 flex gap-2 mb-2 lg:max-w-md">
           <input
+            aria-label="새 플레이리스트 이름"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleCreate()}
@@ -88,6 +90,8 @@ export function PlaylistsPage() {
             type="button"
             onClick={handleCreate}
             disabled={creating || !newName.trim()}
+            aria-label="플레이리스트 만들기"
+            title={newName.trim() ? "플레이리스트 만들기" : "이름을 입력하면 만들 수 있어요"}
             className="px-3 rounded-lg disabled:opacity-40"
             style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
           >
@@ -103,16 +107,15 @@ export function PlaylistsPage() {
       )}
 
       {!loading && playlists.length === 0 && (
-        <div className="flex flex-col items-center text-center py-16 px-6">
-          <ListMusic
-            className="h-9 w-9 mb-3"
-            strokeWidth={1.5}
-            style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.2))" }}
-          />
-          <p style={{ color: "var(--book-chrome-text, rgba(255,255,255,0.7))" }} className="text-[15px]">
-            아직 플레이리스트가 없어요
-          </p>
-        </div>
+        <EmptyNotice
+          icon={<ListMusic className="h-5 w-5" strokeWidth={1.5} />}
+          title="아직 플레이리스트가 없어요"
+          description={
+            isOwner
+              ? "위 입력창에 이름을 적고 + 버튼을 눌러 첫 플레이리스트를 만들어보세요"
+              : "공개된 플레이리스트가 아직 없어요"
+          }
+        />
       )}
 
       {!loading && playlists.length > 0 && (
@@ -120,15 +123,20 @@ export function PlaylistsPage() {
           {playlists.map((p) => (
             <div
               key={p.id}
-              className="rounded-xl border px-4 py-3.5 flex items-center justify-between min-w-0"
+              onClick={() => navigate(`/books/${ownerId}/playlists/${p.id}`)}
+              className="group rounded-xl border pl-4 pr-2 py-3 flex items-center gap-3 min-w-0 cursor-pointer transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
               style={{
                 backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.04))",
                 borderColor: "var(--book-chrome-border, rgba(255,255,255,0.06))",
               }}
             >
+              <ListMusic className="h-4 w-4 shrink-0" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }} />
               <button
                 type="button"
-                onClick={() => navigate(`/books/${ownerId}/playlists/${p.id}`)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate(`/books/${ownerId}/playlists/${p.id}`);
+                }}
                 className="text-left flex-1 min-w-0"
               >
                 <span className="text-[15px] font-medium truncate block">{p.name}</span>
@@ -136,14 +144,18 @@ export function PlaylistsPage() {
               {isOwner && (
                 <button
                   type="button"
-                  onClick={() => handleRemove(p.id, p.name)}
-                  className="p-2 -mr-2 hover:text-red-400 shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemove(p.id, p.name);
+                  }}
+                  className="p-2 hover:text-red-400 shrink-0"
                   style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                   aria-label="플레이리스트 삭제"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
+              <ChevronRight className="h-4 w-4 shrink-0 mr-1" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }} />
             </div>
           ))}
         </div>

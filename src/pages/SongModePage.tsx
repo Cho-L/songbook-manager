@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
+  ChevronRight,
   Music2,
   Minus,
   Plus,
@@ -9,6 +10,7 @@ import {
   EyeOff,
   Lock,
   LockOpen,
+  Video,
 } from "lucide-react";
 import type { Song } from "../types/song";
 import { parseLyrics, hasTimestamps, findCurrentLyricIndex } from "../utils/lyrics";
@@ -22,6 +24,8 @@ import { usePreferences } from "../hooks/usePreferences";
 import { getChromeTones } from "../utils/color";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
+import { useLivePublisher } from "../hooks/useLivePublisher";
+import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 
 interface SongModePageProps {
   songs: Song[];
@@ -55,6 +59,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const { songIds: playlistSongIds } = usePlaylistSongIds(playlistId);
   const wakeLock = useWakeLock();
   const { preferences } = usePreferences(currentUser?.id);
+  const tones = getChromeTones(preferences.backgroundColor);
 
   // 세션 한정 임시 조정치 (+/- 버튼). 저장된 기본값(preferences)에 상대적으로 적용되고,
   // 이 화면을 벗어나면 사라진다 — "내 설정"에서 바꾼 기본값 자체는 건드리지 않는다.
@@ -73,6 +78,13 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     navigate(`/books/${ownerId}/songs/${playlistSongIds[idx + 1]}/sing?playlist=${playlistId}`);
   }
 
+  function goToPrevInPlaylist() {
+    if (!playlistId || !song) return;
+    const idx = playlistSongIds.indexOf(song.id);
+    if (idx <= 0) return; // 첫 곡이면 그대로 멈춤
+    navigate(`/books/${ownerId}/songs/${playlistSongIds[idx - 1]}/sing?playlist=${playlistId}`);
+  }
+
   const playerContainerId = song ? `songmode-yt-player-${song.id}` : "songmode-yt-player";
   // 영상이 있는 곡은 항상 IFrame Player API를 쓴다 — 재생 가능 여부(onError)를
   // 감지하려면 정적 iframe이 아니라 이 방식이어야 한다. 가사 싱크/연속재생 여부와 무관.
@@ -83,6 +95,26 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     goToNextInPlaylist
   );
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
+
+  // 방송 오버레이로 현재 상태 내보내기 (곡/가사 줄이 바뀔 때만 전송, 화면을 벗어나면 자동으로 지움)
+  const liveState = useMemo<LiveStateInput | null>(() => {
+    if (!song || !ownerId) return null;
+    const idx = playlistId ? playlistSongIds.indexOf(song.id) : -1;
+    const inPlaylist = idx >= 0;
+    const { lines, lineIndex } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex);
+    return {
+      bookId: ownerId,
+      mode: "song",
+      song: toLiveSong(song),
+      lines,
+      lineIndex,
+      synced: isSynced,
+      index: inPlaylist ? idx : 0,
+      total: inPlaylist ? playlistSongIds.length : 0,
+      queue: inPlaylist ? buildLiveQueue(playlistSongIds, songs) : [],
+    };
+  }, [song, ownerId, playlistId, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex]);
+  useLivePublisher(liveState);
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
 
@@ -112,7 +144,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   if (loading) {
     return (
       <div
-        className="min-h-screen text-white/40 flex items-center justify-center text-sm"
+        className={`min-h-screen flex items-center justify-center text-sm ${tones.muted}`}
         style={{ backgroundColor: preferences.backgroundColor }}
       >
         불러오는 중...
@@ -121,7 +153,6 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   }
 
   if (!song) {
-    const tones = getChromeTones(preferences.backgroundColor);
     return (
       <div
         className="min-h-screen flex flex-col items-center justify-center text-center px-6"
@@ -141,11 +172,10 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const lyricsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.lyricsFontSize) + fontStepOffset);
   const chordsIndex = clampIndex(FONT_SIZE_ORDER.indexOf(preferences.chordsFontSize) + fontStepOffset);
   const displayedChords = transposeChordsText(song.chords, transposeSteps);
-  const tones = getChromeTones(preferences.backgroundColor);
 
   return (
     <div
-      className="min-h-screen overflow-x-hidden"
+      className="book-focus min-h-screen overflow-x-hidden"
       style={{ backgroundColor: preferences.backgroundColor }}
     >
       <div className="flex items-center justify-between px-5 pt-6 pb-2 gap-3">
@@ -165,6 +195,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         <span className={`text-[13px] shrink-0 ${tones.muted}`}>
           {song.key ? `Key ${song.key}` : ""}
           {song.bpm ? ` · ${song.bpm} BPM` : ""}
+          {song.difficulty ? ` · ${"★".repeat(song.difficulty)}${"☆".repeat(5 - song.difficulty)}` : ""}
         </span>
       </div>
 
@@ -178,7 +209,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             type="button"
             onClick={() => setFontStepOffset((v) => v - 1)}
             disabled={lyricsIndex === 0}
-            className={`p-1.5 disabled:opacity-30 ${tones.base}`}
+            className={`p-2 disabled:opacity-30 ${tones.base}`}
             aria-label="글자 작게"
             title="글자 작게"
           >
@@ -191,7 +222,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             type="button"
             onClick={() => setFontStepOffset((v) => v + 1)}
             disabled={lyricsIndex === FONT_SIZE_ORDER.length - 1}
-            className={`p-1.5 disabled:opacity-30 ${tones.base}`}
+            className={`p-2 disabled:opacity-30 ${tones.base}`}
             aria-label="글자 크게"
             title="글자 크게"
           >
@@ -222,7 +253,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             <button
               type="button"
               onClick={() => setTransposeSteps((v) => Math.max(-6, v - 1))}
-              className={`p-1.5 ${tones.base}`}
+              className={`p-2 ${tones.base}`}
               aria-label="반키 내리기"
               title="반키 내리기"
             >
@@ -234,7 +265,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             <button
               type="button"
               onClick={() => setTransposeSteps((v) => Math.min(6, v + 1))}
-              className={`p-1.5 ${tones.base}`}
+              className={`p-2 ${tones.base}`}
               aria-label="반키 올리기"
               title="반키 올리기"
             >
@@ -269,27 +300,47 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
         )}
 
         {isInPlaylist && (
-          <div className="flex items-center gap-2 ml-auto shrink-0">
+          <div className="flex items-center gap-1.5 ml-auto shrink-0">
+            <button
+              type="button"
+              onClick={goToPrevInPlaylist}
+              disabled={playlistSongIds.indexOf(song.id) <= 0}
+              className={`p-2 rounded-full border disabled:opacity-30 ${tones.chipBg} ${tones.chipBorder} ${tones.base}`}
+              aria-label="이전 곡"
+              title="이전 곡"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <span className={`text-[12px] ${tones.muted}`}>
+              {playlistSongIds.indexOf(song.id) + 1} / {playlistSongIds.length}
+            </span>
+            <button
+              type="button"
+              onClick={goToNextInPlaylist}
+              disabled={playlistSongIds.indexOf(song.id) + 1 >= playlistSongIds.length}
+              className={`p-2 rounded-full border disabled:opacity-30 ${tones.chipBg} ${tones.chipBorder} ${tones.base}`}
+              aria-label="다음 곡"
+              title="다음 곡"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
             <button
               type="button"
               onClick={() =>
                 navigate(`/books/${ownerId}/playlists/${playlistId}/concert?start=${song.id}`)
               }
-              className={`text-[11px] px-2.5 py-1 rounded-full border ${tones.chipBg} ${tones.chipBorder} ${tones.base}`}
+              className={`text-[12px] px-3 py-1.5 rounded-full border ${tones.chipBg} ${tones.chipBorder} ${tones.base}`}
               title="이 플레이리스트를 공연 모드로 보기"
             >
               🎤 공연 모드
             </button>
-            <span className={`text-[11px] ${tones.muted}`}>
-              {playlistSongIds.indexOf(song.id) + 1} / {playlistSongIds.length}
-            </span>
           </div>
         )}
       </div>
 
       <div className="px-6 pt-1 pb-24 max-w-3xl mx-auto w-full">
         <div className="flex items-start justify-between gap-3 mb-1">
-          <h1 className={`text-[26px] font-semibold font-serif break-words ${tones.strong}`}>
+          <h1 className={`text-[26px] font-semibold font-serif break-words min-w-0 ${tones.strong}`}>
             {song.title}
           </h1>
           <div className="shrink-0 -mt-1 -mr-2">
@@ -335,13 +386,16 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
           <div
             className={`aspect-video w-full max-w-2xl mx-auto rounded-lg mb-6 border flex items-center justify-center ${tones.panelBg} ${tones.panelBorder}`}
           >
-            <p className={`text-[13px] ${tones.muted}`}>등록된 MR 영상이 없어요</p>
+            <div className="flex flex-col items-center text-center px-6">
+              <Video className={`h-6 w-6 mb-2 ${tones.muted}`} strokeWidth={1.5} />
+              <p className={`text-[13px] ${tones.muted}`}>등록된 MR 영상이 없어요</p>
+            </div>
           </div>
         )}
 
         {song.chords && showChords && (
           <pre
-            className={`whitespace-pre-wrap break-words font-mono mb-6 leading-relaxed max-w-xl mx-auto ${CHORDS_SCALE_CLASS[chordsIndex]}`}
+            className={`whitespace-pre-wrap break-words font-mono mb-6 leading-relaxed max-w-2xl mx-auto ${CHORDS_SCALE_CLASS[chordsIndex]}`}
             style={{ color: preferences.chordsColor }}
           >
             {displayedChords}
@@ -350,7 +404,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
 
         {lyricLines.length > 0 ? (
           <div
-            className={`leading-[2.1] max-w-xl mx-auto ${LYRICS_SCALE_CLASS[lyricsIndex]} ${LYRICS_FONT_FAMILY_CLASS[preferences.fontFamily] ?? ""}`}
+            className={`leading-[2.1] max-w-2xl mx-auto ${LYRICS_SCALE_CLASS[lyricsIndex]} ${LYRICS_FONT_FAMILY_CLASS[preferences.fontFamily] ?? ""}`}
             style={{ color: preferences.lyricsColor }}
           >
             {lyricLines.map((line, i) => {
@@ -384,8 +438,9 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
           </div>
         ) : (
           <div className="flex flex-col items-center text-center py-10">
-            <Music2 className="h-7 w-7 text-white/15 mb-2" strokeWidth={1.5} />
-            <p className="text-white/30 text-sm">등록된 가사가 없어요</p>
+            <Music2 className={`h-7 w-7 mb-2 ${tones.muted}`} strokeWidth={1.5} />
+            <p className={`text-sm ${tones.base}`}>등록된 가사가 없어요</p>
+            <p className={`text-[12.5px] mt-1 ${tones.muted}`}>곡 정보에 가사를 추가하면 이곳에 표시돼요</p>
           </div>
         )}
       </div>

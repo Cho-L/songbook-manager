@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronLeft } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 
 export function AdminLoginPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login, signup, profile, authError } = useAuth();
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
@@ -16,9 +17,14 @@ export function AdminLoginPage() {
 
   useEffect(() => {
     if (profile) {
-      navigate(`/books/${profile.id}`);
+      // RequireOwner가 넘겨준 원래 경로가 "내 노래책" 안의 경로일 때만 그곳으로 돌아간다.
+      // (그 외에는 기존처럼 내 노래책 홈 — 외부 주소로 보내는 일이 없도록 경로를 검사한다)
+      const from = (location.state as { from?: string } | null)?.from;
+      const ownBase = `/books/${profile.id}`;
+      const safeFrom = from && (from === ownBase || from.startsWith(`${ownBase}/`)) ? from : ownBase;
+      navigate(safeFrom, { replace: true });
     }
-  }, [profile, navigate]);
+  }, [profile, navigate, location.state]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

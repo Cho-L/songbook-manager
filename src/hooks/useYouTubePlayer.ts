@@ -104,6 +104,8 @@ export function useYouTubePlayer(
     if (!enabled || !videoId) return;
     let cancelled = false;
     setPlaybackError(false);
+    // 곡(영상)이 바뀌면 이전 곡의 재생 시간을 버린다 — 안 그러면 새 곡 가사가 이전 곡 시간 기준으로 계산된다.
+    setCurrentTime(0);
 
     function clearBufferingTimeout() {
       if (bufferingTimeoutRef.current !== null) {
