@@ -25,6 +25,7 @@ import { getChromeTones } from "../utils/color";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
+import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 
 interface SongModePageProps {
@@ -84,6 +85,26 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     if (idx <= 0) return; // 첫 곡이면 그대로 멈춤
     navigate(`/books/${ownerId}/songs/${playlistSongIds[idx - 1]}/sing?playlist=${playlistId}`);
   }
+
+  // 방송 키를 계정 단위로 맞춘다 (소유자만) — 다른 기기에서 열어도 같은 OBS URL로 방송된다
+  useAccountLiveKey(ownerId, Boolean(currentUser && currentUser.id === ownerId));
+
+  // 방송용 단축키: N = 다음 곡, P = 이전 곡 (플레이리스트로 실행 중일 때). 입력창에 타이핑 중이거나 Ctrl/Alt/Cmd와 함께면 무시.
+  // Space(재생/일시정지)는 기존 YouTube 훅이 재생 제어를 노출하지 않아서 구현하지 않았다.
+  useEffect(() => {
+    if (!isInPlaylist) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+      if (e.key === "n" || e.key === "N") goToNextInPlaylist();
+      else if (e.key === "p" || e.key === "P") goToPrevInPlaylist();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // goTo* 는 매 렌더 새로 만들어지므로, 최신 곡/목록을 보도록 의존성에 현재 곡과 목록을 둔다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInPlaylist, song?.id, playlistSongIds, playlistId, ownerId]);
 
   const playerContainerId = song ? `songmode-yt-player-${song.id}` : "songmode-yt-player";
   // 영상이 있는 곡은 항상 IFrame Player API를 쓴다 — 재생 가능 여부(onError)를

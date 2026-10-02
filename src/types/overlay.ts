@@ -121,18 +121,18 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   queueMode: "next3",
 };
 
-export const OVERLAY_PRESETS: { value: OverlayPreset; label: string; hint: string }[] = [
-  { value: "minimal", label: "Minimal", hint: "제목·가수·가사만 단순하게" },
-  { value: "nowplaying", label: "Now Playing", hint: "커버 + 제목 + Key/BPM" },
-  { value: "lyrics", label: "Lyrics", hint: "현재 가사를 크게, 다음 가사 한 줄" },
-  { value: "karaoke", label: "Karaoke", hint: "현재 가사 강조, 가운데" },
-  { value: "lowerthird", label: "Lower Third", hint: "화면 아래 띠 형태 자막" },
-  { value: "covercard", label: "Cover Card", hint: "큰 커버 중심 카드" },
-  { value: "queue", label: "Queue", hint: "지금 곡 + 다음 곡 목록" },
-  { value: "vertical", label: "Vertical", hint: "세로 화면(9:16)용" },
-  { value: "card", label: "Card", hint: "커버와 함께 가로 카드" },
-  { value: "subtitle", label: "Subtitle", hint: "화면 아래 자막처럼" },
-  { value: "mini", label: "Mini", hint: "구석에 '제목 · 가수'만 한 줄" },
+export const OVERLAY_PRESETS: { value: OverlayPreset; label: string; hint: string; desc: string }[] = [
+  { value: "minimal", label: "Minimal", hint: "제목·가수·가사만 단순하게", desc: "제목과 가수, 가사를 화면 구석에 단순하게 보여줍니다." },
+  { value: "nowplaying", label: "Now Playing", hint: "커버 + 제목 + Key/BPM", desc: "커버와 함께 지금 곡의 제목, 가수, Key/BPM을 보여줍니다. 가사는 나오지 않아요." },
+  { value: "lyrics", label: "Lyrics", hint: "현재 가사를 크게, 다음 가사 한 줄", desc: "현재 가사를 크게, 다음 가사를 한 줄 보여줍니다." },
+  { value: "karaoke", label: "Karaoke", hint: "현재 가사 강조, 가운데", desc: "현재 가사를 강조해서 가운데에 보여줍니다." },
+  { value: "lowerthird", label: "Lower Third", hint: "화면 아래 띠 형태 자막", desc: "방송 화면 하단에 제목과 가수를 띠 모양으로 표시합니다." },
+  { value: "covercard", label: "Cover Card", hint: "큰 커버 중심 카드", desc: "큰 커버 이미지를 중심으로 제목과 가수를 카드로 보여줍니다." },
+  { value: "queue", label: "Queue", hint: "지금 곡 + 다음 곡 목록", desc: "지금 곡(NOW)과 다음 곡(NEXT) 목록을 보여줍니다." },
+  { value: "vertical", label: "Vertical", hint: "세로 화면(9:16)용", desc: "세로 방송 화면(9:16)에 맞게 커버, 제목, 가사를 세로로 쌓아 보여줍니다." },
+  { value: "card", label: "Card", hint: "커버와 함께 가로 카드", desc: "커버와 함께 가로 카드 형태로 보여줍니다." },
+  { value: "subtitle", label: "Subtitle", hint: "화면 아래 자막처럼", desc: "화면 아래에 자막처럼 가사를 보여줍니다." },
+  { value: "mini", label: "Mini", hint: "구석에 '제목 · 가수'만 한 줄", desc: "화면 구석에 제목 · 가수만 한 줄로 작게 보여줍니다." },
 ];
 
 export const OVERLAY_POSITIONS: { value: OverlayPosition; label: string }[] = [
@@ -317,3 +317,74 @@ export function presetDefaults(preset: OverlayPreset): Partial<OverlaySettings> 
       return { showTitle: true, showArtist: true, showCover: true, showLyrics: true, lyricsMode: "next", background: "transparent", lyricAccent: true, showProgress: true };
   }
 }
+
+// ---------------------------------------------------------------- 방송 프로필 / 설정 파일
+
+/** 어떤 값이 들어와도(옛 버전, 깨진 값, 엉뚱한 타입) 안전한 OverlaySettings로 만든다. */
+export function sanitizeOverlaySettings(raw: unknown): OverlaySettings {
+  const obj = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  // 기본값과 같은 타입의 값만 받아들이고, 나머지는 기본값 → 그 뒤 URL 파서와 같은 검증(범위/허용값/색 형식)을 한 번 더 거친다
+  const merged: Record<string, unknown> = { ...DEFAULT_OVERLAY_SETTINGS };
+  for (const key of Object.keys(DEFAULT_OVERLAY_SETTINGS) as (keyof OverlaySettings)[]) {
+    const v = obj[key];
+    if (v !== undefined && typeof v === typeof DEFAULT_OVERLAY_SETTINGS[key]) merged[key] = v;
+  }
+  return parseOverlaySettings(new URLSearchParams(serializeOverlaySettings(merged as unknown as OverlaySettings)));
+}
+
+export const PROFILE_NAME_MAX = 40;
+export function cleanProfileName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").slice(0, PROFILE_NAME_MAX) || "이름 없는 프로필";
+}
+
+export const OVERLAY_EXPORT_VERSION = 1;
+
+export function buildOverlayExport(name: string, settings: OverlaySettings): string {
+  return JSON.stringify({ version: OVERLAY_EXPORT_VERSION, profile: name, settings }, null, 2);
+}
+
+export type OverlayImportResult = { ok: true; name: string; settings: OverlaySettings } | { ok: false; error: string };
+
+/** 가져온 설정 파일 검사. 형식/버전이 맞지 않으면 거부하고(호출한 쪽은 기존 설정을 그대로 둔다) 이유를 돌려준다. */
+export function parseOverlayImport(text: string): OverlayImportResult {
+  if (text.length > 200_000) return { ok: false, error: "파일이 너무 커요." };
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return { ok: false, error: "올바른 JSON 파일이 아니에요." };
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return { ok: false, error: "방송 설정 파일 형식이 아니에요." };
+  const d = data as { version?: unknown; profile?: unknown; settings?: unknown };
+  if (d.version !== OVERLAY_EXPORT_VERSION) return { ok: false, error: "지원하지 않는 버전의 설정 파일이에요." };
+  if (!d.settings || typeof d.settings !== "object" || Array.isArray(d.settings)) return { ok: false, error: "설정 내용이 없어요." };
+  return {
+    ok: true,
+    name: typeof d.profile === "string" ? cleanProfileName(d.profile) : "가져온 설정",
+    settings: sanitizeOverlaySettings(d.settings),
+  };
+}
+
+/** 처음 쓰는 사람을 위한 추천 설정 — DB에 자동 생성하지 않고, 눌러서 현재 설정에 적용한 뒤 직접 프로필로 저장하게 한다. */
+export const RECOMMENDED_PROFILES: { name: string; desc: string; build: () => OverlaySettings }[] = [
+  {
+    name: "YouTube 가로 방송",
+    desc: "제목·가수·가사를 왼쪽 아래에 단순하게",
+    build: () => ({ ...DEFAULT_OVERLAY_SETTINGS, preset: "minimal", ...presetDefaults("minimal"), showProgress: true }),
+  },
+  {
+    name: "YouTube 세로 방송",
+    desc: "9:16 세로 화면에 맞춘 구성",
+    build: () => ({ ...DEFAULT_OVERLAY_SETTINGS, preset: "vertical", ...presetDefaults("vertical") }),
+  },
+  {
+    name: "Karaoke",
+    desc: "현재 가사를 크게 강조해 가운데에",
+    build: () => ({ ...DEFAULT_OVERLAY_SETTINGS, preset: "karaoke", ...presetDefaults("karaoke") }),
+  },
+  {
+    name: "Minimal",
+    desc: "구석에 '제목 · 가수' 한 줄만",
+    build: () => ({ ...DEFAULT_OVERLAY_SETTINGS, preset: "mini", ...presetDefaults("mini") }),
+  },
+];

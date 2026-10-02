@@ -12,6 +12,7 @@ import { useBookDesign } from "../hooks/useBookDesign";
 import { getChromeCssVars } from "../utils/color";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
+import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 import type { Song } from "../types/song";
 
@@ -105,8 +106,13 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
   // (새로운 플레이어 제어를 만들지 않기 위해) Space 재생/일시정지는 구현하지 않는다.
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable);
+      const plain = !typing && !e.ctrlKey && !e.metaKey && !e.altKey;
       if (e.key === "ArrowLeft") goPrev();
       else if (e.key === "ArrowRight") goNext();
+      else if (plain && (e.key === "p" || e.key === "P")) goPrev();
+      else if (plain && (e.key === "n" || e.key === "N")) goNext();
       else if (e.key === "Escape") exitConcert();
     }
     window.addEventListener("keydown", handleKeyDown);
@@ -127,6 +133,8 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
     goNext
   );
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
+
+  useAccountLiveKey(ownerId, Boolean(currentUser && currentUser.id === ownerId));
 
   // 방송 오버레이로 현재 공연 상태 내보내기. 공연이 끝나면 mode="finished"로 알려 종료 화면을 띄울 수 있게 한다.
   const liveState = useMemo<LiveStateInput | null>(() => {

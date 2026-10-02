@@ -101,6 +101,17 @@ export function getLiveKey(bookId: string): string {
   }
 }
 
+/** 계정에 저장된 방송 키를 이 브라우저에 반영한다 (형식이 올바를 때만). */
+export function setLiveKey(bookId: string, key: string): boolean {
+  if (!isValidLiveKey(key)) return false;
+  try {
+    localStorage.setItem(LIVE_KEY_PREFIX + bookId, key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** 방송 키를 새로 발급한다 — 이전 오버레이 URL은 더 이상 이 노래책의 방송을 받지 못한다. */
 export function regenerateLiveKey(bookId: string): string {
   const fresh = randomKey();

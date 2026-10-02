@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Check, ChevronLeft, Copy, ExternalLink, RefreshCw } from "lucide-react";
+import { Check, ChevronLeft, Copy, Download, ExternalLink, RefreshCw, Upload } from "lucide-react";
 import { OverlayView } from "../components/overlay/OverlayView";
 import { useBookDesign } from "../hooks/useBookDesign";
+import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
+import { broadcastRepository, type BroadcastProfile, type ProfileSource } from "../services/broadcastRepository";
 import { getChromeCssVars } from "../utils/color";
 import {
   clearLive,
@@ -20,6 +22,11 @@ import {
 import {
   DEFAULT_OVERLAY_SETTINGS,
   OFFSET_X_MAX,
+  PROFILE_NAME_MAX,
+  RECOMMENDED_PROFILES,
+  buildOverlayExport,
+  cleanProfileName,
+  parseOverlayImport,
   OFFSET_Y_MAX,
   OVERLAY_POSITIONS,
   OVERLAY_PRESETS,
@@ -216,6 +223,26 @@ export function OverlaySettingsPage() {
   const [testActive, setTestActive] = useState(false);
   const testRef = useRef<{ id: string; timer: number; stop: number } | null>(null);
   const target = useMemo(() => (ownerId && liveKey ? { bookId: ownerId, key: liveKey } : null), [ownerId, liveKey]);
+
+  // 방송 키를 계정 단위로 맞춘다 (다른 기기에서 저장한 키가 있으면 그 키로 통일)
+  useAccountLiveKey(ownerId, true, setLiveKey);
+
+  // ---- 방송 프로필 ----
+  const ACTIVE_KEY = `songbook:overlay-active-profile:${ownerId}`;
+  const [profiles, setProfiles] = useState<BroadcastProfile[]>([]);
+  const [profilesLoading, setProfilesLoading] = useState(true);
+  const [profileSource, setProfileSource] = useState<ProfileSource>("server");
+  const [activeId, setActiveId] = useState<string>("");
+  const [form, setForm] = useState<null | "new" | "rename">(null);
+  const [formName, setFormName] = useState("");
+  const [profileMsg, setProfileMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const importRef = useRef<HTMLInputElement>(null);
+  const activeProfile = profiles.find((p) => p.id === activeId) ?? null;
+  // 저장된 프로필과 현재 화면 설정이 다른지 (accent는 노래책 색을 따라가므로 비교에서 제외)
+  const comparable = (st: OverlaySettings) => serializeOverlaySettings({ ...st, accent: "000000" });
+  const dirty = activeProfile !== null && comparable(settings) !== comparable(activeProfile.settings);
+
   const previewRef = useRef<HTMLDivElement>(null);
   const [previewWidth, setPreviewWidth] = useState(640);
   const [previewHeight, setPreviewHeight] = useState(360);
@@ -337,7 +364,9 @@ export function OverlaySettingsPage() {
     if (!ownerId) return;
     if (!window.confirm("방송 키를 새로 만들면 지금 OBS에 붙여넣은 URL은 더 이상 작동하지 않아요. 새 URL을 다시 붙여넣어야 합니다. 계속할까요?")) return;
     stopTest("idle");
-    setLiveKey(regenerateLiveKey(ownerId));
+    const fresh = regenerateLiveKey(ownerId);
+    setLiveKey(fresh);
+    void broadcastRepository.saveLiveKey(ownerId, fresh).catch(() => undefined);
   }
 
   useEffect(() => {
@@ -358,6 +387,161 @@ export function OverlaySettingsPage() {
     const id = window.setTimeout(() => setCopied(false), 2000);
     return () => window.clearTimeout(id);
   }, [copied]);
+
+  useEffect(() => {
+    if (!ownerId) return;
+    let cancelled = false;
+    setProfilesLoading(true);
+    broadcastRepository
+      .list(ownerId)
+      .then(({ profiles: list, source }) => {
+        if (cancelled) return;
+        setProfiles(list);
+        setProfileSource(source);
+        try {
+          const saved = localStorage.getItem(ACTIVE_KEY);
+          if (saved && list.some((p) => p.id === saved)) setActiveId(saved);
+        } catch {
+          // ignore
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProfileMsg({ kind: "error", text: "방송 프로필을 불러오지 못했어요. 잠시 후 다시 시도해주세요." });
+      })
+      .finally(() => {
+        if (!cancelled) setProfilesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ownerId]);
+
+  function rememberActive(id: string) {
+    setActiveId(id);
+    try {
+      if (id) localStorage.setItem(ACTIVE_KEY, id);
+      else localStorage.removeItem(ACTIVE_KEY);
+    } catch {
+      // ignore
+    }
+  }
+
+  async function runProfileAction(action: () => Promise<void>, errorText: string) {
+    setBusy(true);
+    setProfileMsg(null);
+    try {
+      await action();
+    } catch {
+      setProfileMsg({ kind: "error", text: errorText });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function selectProfile(id: string) {
+    if (!id) {
+      rememberActive("");
+      return;
+    }
+    const p = profiles.find((x) => x.id === id);
+    if (!p) return;
+    if (dirty && !window.confirm("저장하지 않은 변경사항이 사라져요. 다른 프로필을 불러올까요?")) return;
+    setSettings(p.settings);
+    rememberActive(p.id);
+    setForm(null);
+    setProfileMsg({ kind: "ok", text: `"${p.name}" 프로필을 불러왔어요.` });
+  }
+
+  function openForm(kind: "new" | "rename") {
+    setForm(kind);
+    setFormName(kind === "rename" ? activeProfile?.name ?? "" : "");
+    setProfileMsg(null);
+  }
+
+  function submitForm() {
+    if (!ownerId) return;
+    const name = cleanProfileName(formName);
+    if (!formName.trim()) {
+      setProfileMsg({ kind: "error", text: "프로필 이름을 입력해주세요." });
+      return;
+    }
+    void runProfileAction(async () => {
+      if (form === "rename" && activeProfile) {
+        const updated = await broadcastRepository.update(ownerId, activeProfile.id, { name });
+        setProfiles((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+        setProfileMsg({ kind: "ok", text: "이름을 바꿨어요." });
+      } else {
+        const created = await broadcastRepository.create(ownerId, name, settings);
+        setProfiles((list) => [...list, created]);
+        rememberActive(created.id);
+        setProfileMsg({ kind: "ok", text: `"${created.name}" 프로필로 저장했어요.` });
+      }
+      setForm(null);
+    }, "저장하지 못했어요. 잠시 후 다시 시도해주세요.");
+  }
+
+  function saveActive() {
+    if (!ownerId || !activeProfile) return;
+    void runProfileAction(async () => {
+      const updated = await broadcastRepository.update(ownerId, activeProfile.id, { settings });
+      setProfiles((list) => list.map((p) => (p.id === updated.id ? updated : p)));
+      setProfileMsg({ kind: "ok", text: `"${updated.name}"에 저장했어요.` });
+    }, "저장하지 못했어요. 잠시 후 다시 시도해주세요.");
+  }
+
+  function duplicateActive() {
+    if (!ownerId || !activeProfile) return;
+    void runProfileAction(async () => {
+      const copy = await broadcastRepository.create(ownerId, `${activeProfile.name} - 복사본`.slice(0, PROFILE_NAME_MAX), activeProfile.settings);
+      setProfiles((list) => [...list, copy]);
+      setSettings(copy.settings);
+      rememberActive(copy.id);
+      setProfileMsg({ kind: "ok", text: `"${copy.name}" 프로필을 만들었어요.` });
+    }, "복제하지 못했어요. 잠시 후 다시 시도해주세요.");
+  }
+
+  function deleteActive() {
+    if (!ownerId || !activeProfile) return;
+    if (!window.confirm(`"${activeProfile.name}" 프로필을 삭제할까요? 되돌릴 수 없어요. (현재 화면의 설정은 그대로 남아요)`)) return;
+    void runProfileAction(async () => {
+      await broadcastRepository.remove(ownerId, activeProfile.id);
+      setProfiles((list) => list.filter((p) => p.id !== activeProfile.id));
+      rememberActive("");
+      setProfileMsg({ kind: "ok", text: "프로필을 삭제했어요." });
+    }, "삭제하지 못했어요. 잠시 후 다시 시도해주세요.");
+  }
+
+  function applyRecommended(i: number) {
+    const rec = RECOMMENDED_PROFILES[i];
+    if (dirty && !window.confirm("저장하지 않은 변경사항이 사라져요. 추천 설정을 적용할까요?")) return;
+    setSettings(rec.build());
+    rememberActive("");
+    setProfileMsg({ kind: "ok", text: `"${rec.name}" 추천 설정을 적용했어요. 마음에 들면 프로필로 저장해보세요.` });
+  }
+
+  function exportSettings() {
+    const name = activeProfile?.name ?? "방송 설정";
+    const blob = new Blob([buildOverlayExport(name, settings)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `songbook-overlay-${name.replace(/[^\w가-힣-]+/g, "_")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function importSettings(file: File | undefined) {
+    if (!file) return;
+    const result = parseOverlayImport(await file.text());
+    if (!result.ok) {
+      setProfileMsg({ kind: "error", text: `가져오지 못했어요: ${result.error} (현재 설정은 그대로예요)` });
+    } else {
+      setSettings(result.settings);
+      setProfileMsg({ kind: "ok", text: `"${result.name}" 설정을 가져왔어요. 프로필로 저장하려면 "새 프로필"을 눌러주세요.` });
+    }
+    if (importRef.current) importRef.current.value = "";
+  }
 
   function update<K extends keyof OverlaySettings>(key: K, value: OverlaySettings[K]) {
     setSettings((s) => ({ ...s, [key]: value }));
@@ -399,6 +583,155 @@ export function OverlaySettingsPage() {
           OBS 브라우저 소스로 노래 제목과 가사를 방송 화면 위에 띄워요
         </p>
       </div>
+
+      {/* ---- 방송 프로필: 계정 단위로 저장해 두고 어떤 노래책에서든 불러온다 ---- */}
+      <section aria-labelledby="profiles-title" className="mx-5 lg:mx-8 mb-6 rounded-xl border p-4" style={chipStyle}>
+        <div className="flex items-center justify-between gap-2 flex-wrap mb-3">
+          <h2 id="profiles-title" className="text-[15px] font-semibold">
+            방송 프로필
+          </h2>
+          {dirty && (
+            <span data-testid="profile-dirty" className="text-[12px] font-medium" style={{ color: "#fbbf24" }}>
+              ● 저장되지 않은 변경사항
+            </span>
+          )}
+        </div>
+
+        {profilesLoading ? (
+          <p className="text-[13px]" style={muted}>방송 프로필을 불러오는 중…</p>
+        ) : profiles.length === 0 ? (
+          <div data-testid="profile-empty">
+            <p className="text-[13px]" style={muted}>
+              아직 저장된 방송 프로필이 없습니다. 현재 오버레이 설정을 프로필로 저장해 보세요.
+            </p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => openForm("new")}
+                className="rounded-lg px-4 min-h-[40px] text-[13px] font-medium transition-[filter] hover:brightness-110 active:brightness-95"
+                style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
+              >
+                프로필 저장
+              </button>
+            </div>
+            <p className="text-[12px] mt-4 mb-2" style={muted}>추천 설정으로 시작하기</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {RECOMMENDED_PROFILES.map((r, i) => (
+                <button
+                  key={r.name}
+                  type="button"
+                  onClick={() => applyRecommended(i)}
+                  className="text-left rounded-lg border px-3 py-2.5 min-h-[44px] transition-[filter] hover:brightness-110"
+                  style={chipStyle}
+                >
+                  <span className="block text-[13px]">{r.name}</span>
+                  <span className="block text-[11px]" style={muted}>{r.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            <div>
+              <label htmlFor="profile-select" className="text-[12px] font-medium block mb-1.5" style={muted}>
+                내 방송 프로필
+              </label>
+              <select
+                id="profile-select"
+                value={activeId}
+                onChange={(e) => selectProfile(e.target.value)}
+                className="book-input w-full rounded-lg border px-3 py-2.5 text-[13.5px] outline-none min-h-[44px]"
+                style={{ ...chipStyle, color: "var(--book-text, #fff)" }}
+              >
+                <option value="">— 프로필 선택 (저장하지 않은 설정) —</option>
+                {profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => openForm("new")} disabled={busy} className="rounded-lg border px-3.5 min-h-[40px] text-[13px] disabled:opacity-40" style={chipStyle}>
+                새 프로필
+              </button>
+              <button
+                type="button"
+                onClick={saveActive}
+                disabled={busy || !activeProfile}
+                className="rounded-lg border px-3.5 min-h-[40px] text-[13px] font-medium disabled:opacity-40"
+                style={
+                  dirty
+                    ? { backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F", borderColor: "transparent" }
+                    : chipStyle
+                }
+              >
+                {dirty ? "저장 필요 — 저장" : "저장"}
+              </button>
+              <button type="button" onClick={duplicateActive} disabled={busy || !activeProfile} className="rounded-lg border px-3.5 min-h-[40px] text-[13px] disabled:opacity-40" style={chipStyle}>
+                복제
+              </button>
+              <button type="button" onClick={() => openForm("rename")} disabled={busy || !activeProfile} className="rounded-lg border px-3.5 min-h-[40px] text-[13px] disabled:opacity-40" style={chipStyle}>
+                이름 변경
+              </button>
+              <button type="button" onClick={deleteActive} disabled={busy || !activeProfile} className="rounded-lg border px-3.5 min-h-[40px] text-[13px] disabled:opacity-40" style={{ ...chipStyle, color: "#f87171" }}>
+                삭제
+              </button>
+            </div>
+          </div>
+        )}
+
+        {form && (
+          <div className="mt-3 flex flex-col sm:flex-row gap-2" data-testid="profile-form">
+            <label htmlFor="profile-name" className="sr-only">프로필 이름</label>
+            <input
+              id="profile-name"
+              value={formName}
+              maxLength={PROFILE_NAME_MAX}
+              autoFocus
+              placeholder="예: YouTube 가로 방송"
+              onChange={(e) => setFormName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submitForm()}
+              className="book-input flex-1 min-w-0 rounded-lg border px-3 py-2.5 text-[13.5px] outline-none"
+              style={{ ...chipStyle, color: "var(--book-text, #fff)" }}
+            />
+            <div className="flex gap-2">
+              <button type="button" onClick={submitForm} disabled={busy} className="rounded-lg px-4 min-h-[42px] text-[13px] font-medium disabled:opacity-40" style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}>
+                {form === "rename" ? "이름 바꾸기" : "저장"}
+              </button>
+              <button type="button" onClick={() => setForm(null)} className="rounded-lg border px-4 min-h-[42px] text-[13px]" style={chipStyle}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div role="status" data-testid="profile-msg" className="text-[12.5px] mt-3 min-h-[1.2em] [overflow-wrap:anywhere]" style={{ color: profileMsg?.kind === "error" ? "#f87171" : "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}>
+          {profileMsg?.text}
+        </div>
+        {profileSource === "local" && !profilesLoading && (
+          <p className="text-[11.5px] mt-1" style={muted} data-testid="profile-local-note">
+            이 브라우저에만 저장돼요. (서버에 방송 프로필 저장소가 아직 준비되지 않았어요. 관리자가 schema.sql을 적용하면 계정에 저장돼요.)
+          </p>
+        )}
+
+        <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t" style={{ borderColor: "var(--book-chrome-border, rgba(255,255,255,0.1))" }}>
+          <button type="button" onClick={exportSettings} className="inline-flex items-center gap-1.5 rounded-lg border px-3 min-h-[40px] text-[12.5px]" style={chipStyle}>
+            <Download className="h-3.5 w-3.5" /> 설정 내보내기
+          </button>
+          <button type="button" onClick={() => importRef.current?.click()} className="inline-flex items-center gap-1.5 rounded-lg border px-3 min-h-[40px] text-[12.5px]" style={chipStyle}>
+            <Upload className="h-3.5 w-3.5" /> 설정 가져오기
+          </button>
+          <input
+            ref={importRef}
+            type="file"
+            accept="application/json,.json"
+            aria-label="설정 파일 선택"
+            className="sr-only"
+            onChange={(e) => void importSettings(e.target.files?.[0])}
+          />
+        </div>
+      </section>
 
       <div className="px-5 lg:px-8 lg:grid lg:grid-cols-[1fr_420px] lg:gap-10 lg:items-start">
         {/* 좌: 미리보기 (데스크톱에서는 스크롤해도 따라온다) */}
@@ -448,6 +781,9 @@ export function OverlaySettingsPage() {
                 />
               ))}
             </div>
+            <p className="text-[12.5px] mt-2" style={muted} data-testid="preset-desc">
+              {OVERLAY_PRESETS.find((p) => p.value === settings.preset)?.desc}
+            </p>
           </section>
 
           <section aria-labelledby="step2" className="flex flex-col gap-5">
@@ -775,6 +1111,11 @@ export function OverlaySettingsPage() {
                 <RefreshCw className="h-3.5 w-3.5" /> 방송 키 다시 만들기
               </button>
             </div>
+            {dirty && (
+              <p className="text-[11.5px] mt-1" style={{ color: "#fbbf24" }}>
+                저장하지 않은 변경사항이 이 URL에 그대로 들어 있어요. 프로필에 저장해 두면 다음 방송에서 다시 불러올 수 있어요.
+              </p>
+            )}
             <p className="text-[11.5px] mt-1" style={muted}>
               URL 안의 방송 키는 이 노래책 방송 채널의 입장 열쇠예요. 다른 사람에게 공유하지 마세요.
             </p>
@@ -835,7 +1176,7 @@ export function OverlaySettingsPage() {
             </div>
             <p className="text-[12px] mt-3 leading-relaxed" style={muted}>
               테스트가 끝나면 노래 부르기나 공연 모드를 시작하세요. 곡을 바꾸면 OBS 화면도 자동으로 바뀌어요.
-              다른 기기에서 노래를 부를 때는 그 기기에서 이 화면을 열어 URL을 새로 복사해 OBS에 붙여넣어야 해요.
+              방송 키는 계정에 저장돼서(서버가 준비된 경우) 다른 기기에서 노래를 불러도 같은 URL로 방송돼요. 서버가 준비되지 않았다면 이 브라우저에서만 유효해요.
             </p>
           </section>
         </div>

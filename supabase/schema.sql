@@ -370,3 +370,61 @@ create trigger book_designs_set_updated_at
   before update on public.book_designs
   for each row execute procedure public.set_updated_at();
 -- ============================================================
+
+
+-- ============================================================
+-- Phase: 방송 프로필 + 계정 단위 방송 키
+-- ============================================================
+-- broadcast_profiles: 방송 오버레이 설정 묶음("YouTube 가로 방송" 등). 노래책이 아니라 계정에 속하며,
+--   어떤 노래책에든 적용할 수 있다. settings 는 오버레이 설정 객체(OverlaySettings) 전체를 jsonb 로 저장한다.
+--   → 설정 필드가 늘어나도 컬럼 변경이 필요 없고, 앱이 읽을 때 검증/기본값 보정을 한다.
+-- broadcast_keys: 계정당 방송 채널 키 1개. 브라우저가 달라도(다른 기기) 같은 키를 쓰게 해서
+--   OBS 오버레이 URL이 기기마다 달라지는 문제를 없앤다. 키는 "채널을 추측할 수 없게 하는 비밀값"이며
+--   인증 토큰이 아니다. 소유자 본인만 읽고 쓸 수 있다(OBS 는 DB 를 읽지 않고, 키는 URL 로만 전달된다).
+-- 두 테이블 모두 user_preferences 와 같은 방식: 본인만 조회/쓰기 (공개 조회 없음).
+-- ============================================================
+
+create table if not exists public.broadcast_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  name text not null check (char_length(name) between 1 and 40),
+  settings jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists broadcast_profiles_user_idx on public.broadcast_profiles (user_id, created_at);
+
+alter table public.broadcast_profiles enable row level security;
+
+drop policy if exists "broadcast_profiles_owner_all" on public.broadcast_profiles;
+create policy "broadcast_profiles_owner_all"
+  on public.broadcast_profiles for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop trigger if exists broadcast_profiles_set_updated_at on public.broadcast_profiles;
+create trigger broadcast_profiles_set_updated_at
+  before update on public.broadcast_profiles
+  for each row execute procedure public.set_updated_at();
+
+create table if not exists public.broadcast_keys (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  live_key text not null check (live_key ~ '^[0-9a-f]{24}$'),
+  updated_at timestamptz not null default now()
+);
+
+alter table public.broadcast_keys enable row level security;
+
+drop policy if exists "broadcast_keys_owner_all" on public.broadcast_keys;
+create policy "broadcast_keys_owner_all"
+  on public.broadcast_keys for all
+  to authenticated
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+drop trigger if exists broadcast_keys_set_updated_at on public.broadcast_keys;
+create trigger broadcast_keys_set_updated_at
+  before update on public.broadcast_keys
+  for each row execute procedure public.set_updated_at();
