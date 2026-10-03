@@ -10,6 +10,8 @@ import {
   clearLive,
   getLiveKey,
   publishLive,
+  publishOverlaySettings,
+  subscribeSettingsChannel,
   readLive,
   regenerateLiveKey,
   subscribeLive,
@@ -239,6 +241,13 @@ export function OverlaySettingsPage() {
   const [busy, setBusy] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const activeProfile = profiles.find((p) => p.id === activeId) ?? null;
+  // ---- 오버레이 설정 실시간 전송 ----
+  // 설정이 바뀌면(슬라이더처럼 빠른 변경은 120ms 모아서) 연결된 모든 오버레이(OBS)로 보낸다.
+  // OBS URL을 다시 복사/수정할 필요 없이 디자인이 바로 바뀐다.
+  const [published, setPublished] = useState<{ ver: number; at: number } | null>(null);
+  const latestRef = useRef<{ settings: OverlaySettings; ver: number } | null>(null);
+  // 연결된 오버레이: sid → 마지막으로 확인된 시각/적용한 설정 버전
+  const [overlays, setOverlays] = useState<Record<string, { seen: number; ver: number }>>({});
   // 저장된 프로필과 현재 화면 설정이 다른지 (accent는 노래책 색을 따라가므로 비교에서 제외)
   const comparable = (st: OverlaySettings) => serializeOverlaySettings({ ...st, accent: "000000" });
   const dirty = activeProfile !== null && comparable(settings) !== comparable(activeProfile.settings);
@@ -417,6 +426,37 @@ export function OverlaySettingsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ownerId]);
 
+  const effectiveKey = serializeOverlaySettings(effective);
+  useEffect(() => {
+    if (!ownerId) return;
+    const t = window.setTimeout(() => {
+      const ver = publishOverlaySettings(ownerId, effective);
+      latestRef.current = { settings: effective, ver };
+      setPublished({ ver, at: Date.now() });
+    }, 120);
+    return () => window.clearTimeout(t);
+    // effective 객체가 아니라 그 내용(effectiveKey)이 바뀔 때만 다시 보낸다
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveKey, ownerId, liveKey]);
+
+  // 오버레이가 새로 연결되어 "현재 설정을 주세요"라고 하면 바로 답하고, 연결/적용 확인을 모아 둔다
+  useEffect(() => {
+    if (!ownerId || !liveKey) return;
+    const mark = (sid: string, ver?: number) =>
+      setOverlays((prev) => ({ ...prev, [sid]: { seen: Date.now(), ver: ver ?? prev[sid]?.ver ?? 0 } }));
+    return subscribeSettingsChannel(
+      { bookId: ownerId, key: liveKey },
+      {
+        onRequest: (sid) => {
+          mark(sid);
+          const cur = latestRef.current;
+          if (cur) publishOverlaySettings(ownerId, cur.settings, cur.ver);
+        },
+        onAck: (sid, ver) => mark(sid, ver),
+      }
+    );
+  }, [ownerId, liveKey]);
+
   function rememberActive(id: string) {
     setActiveId(id);
     try {
@@ -563,6 +603,9 @@ export function OverlaySettingsPage() {
   const liveMatches = live !== null && live.mode !== "test" && live.bookId === ownerId && now - recvAt < 15000;
   const muted = { color: "var(--book-chrome-muted, rgba(255,255,255,0.5))" } as const;
   const link = LINK_LABEL[linkStatus];
+  // 25초 안에 확인 신호가 있었던 오버레이만 "연결됨"으로 본다
+  const connectedOverlays = Object.values(overlays).filter((o) => now - o.seen < 25000);
+  const allApplied = published !== null && connectedOverlays.every((o) => o.ver >= published.ver);
   const previewState = liveMatches ? live : SAMPLE_STATE;
 
   return (
@@ -1128,7 +1171,7 @@ export function OverlaySettingsPage() {
             <ol className="list-decimal pl-5 text-[13px] leading-relaxed space-y-1" style={muted}>
               <li>위에서 <b>방송 오버레이 URL</b>을 복사합니다.</li>
               <li>OBS에서 소스 목록의 <b>+</b>를 눌러 <b>브라우저</b> 소스를 추가합니다.</li>
-              <li>복사한 URL을 <b>URL 칸</b>에 붙여넣습니다.</li>
+              <li>복사한 URL을 <b>URL 칸</b>에 붙여넣습니다. <b>처음 한 번만</b> 붙여넣으면 돼요. 이후 디자인을 바꾸면 OBS에 자동으로 적용돼요.</li>
               <li>화면 크기를 정합니다. 가로 방송은 너비 <b>1920</b>, 높이 <b>1080</b>, 세로 방송은 너비 <b>1080</b>, 높이 <b>1920</b>을 권장해요. 방송 캔버스에 맞춰 바꿔도 돼요.</li>
               <li>노래 부르기(또는 공연 모드)에서 노래를 시작합니다. 배경은 자동으로 투명해요.</li>
             </ol>
@@ -1145,7 +1188,22 @@ export function OverlaySettingsPage() {
               </span>
             </div>
             <p className="text-[11.5px] -mt-2 mb-3" style={muted}>
-              이 표시는 이 화면과 실시간 서버 사이의 연결이에요. OBS가 켜져 있는지는 아래 &quot;OBS 연결 테스트&quot;로 확인하세요.
+              위 표시는 이 화면과 실시간 서버 사이의 연결이에요. OBS가 켜져 있는지는 아래 &quot;OBS 오버레이&quot;에서 확인하세요.
+            </p>
+            <div className="flex items-center justify-between gap-2 mb-1 text-[13px]">
+              <span style={muted}>OBS 오버레이</span>
+              <span data-testid="overlay-obs-status" className="font-medium text-right" style={{ color: connectedOverlays.length > 0 ? "#22c55e" : "#fbbf24" }}>
+                {connectedOverlays.length > 0 ? `🟢 OBS 연결됨 (${connectedOverlays.length}개)` : "🟡 OBS 연결 대기 중"}
+              </span>
+            </div>
+            <p data-testid="overlay-apply-status" role="status" className="text-[12px] mb-3" style={muted}>
+              {published === null
+                ? ""
+                : connectedOverlays.length === 0
+                  ? "✓ 설정 저장됨 — OBS가 연결되면 자동으로 적용돼요."
+                  : allApplied
+                    ? "✓ OBS에 적용됨"
+                    : "OBS에 적용하는 중…"}
             </p>
             <div className="flex flex-wrap items-center gap-2">
               {testActive ? (

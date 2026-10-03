@@ -65,7 +65,14 @@ export type LiveStateInput = Omit<LiveState, "v" | "ts">;
 export type LiveEnvelope =
   | { type: "state" | "heartbeat"; sid: string; ts: number; state: LiveState }
   | { type: "clear"; sid: string; ts: number; bookId: string }
-  | { type: "ack"; sid: string; ts: number; bookId: string; testId: string };
+  | { type: "ack"; sid: string; ts: number; bookId: string; testId: string }
+  // ---- 오버레이 "설정" 동기화 (곡 상태와 분리된 메시지) ----
+  /** 설정 화면 → 오버레이: 현재 오버레이 설정. ver 이 큰 쪽이 최신이다. */
+  | { type: "settings"; sid: string; ts: number; bookId: string; ver: number; settings: unknown }
+  /** 오버레이 → 설정 화면/방송 중인 화면: "방금 연결됐어요, 현재 설정을 주세요" */
+  | { type: "settings-request"; sid: string; ts: number; bookId: string }
+  /** 오버레이 → 설정 화면: "ver 설정을 적용했어요 / 아직 살아 있어요" (적용 확인 + 연결된 OBS 수 표시용) */
+  | { type: "settings-ack"; sid: string; ts: number; bookId: string; ver: number };
 
 export type { LinkStatus };
 
@@ -160,6 +167,10 @@ function isEnvelope(value: unknown): value is LiveEnvelope {
   if (e.type === "state" || e.type === "heartbeat") return isLiveState(e.state);
   if (e.type === "clear") return typeof (e as { bookId?: unknown }).bookId === "string";
   if (e.type === "ack") return typeof (e as { testId?: unknown }).testId === "string";
+  const x = e as { bookId?: unknown; ver?: unknown };
+  if (e.type === "settings") return typeof x.bookId === "string" && typeof x.ver === "number";
+  if (e.type === "settings-request") return typeof x.bookId === "string";
+  if (e.type === "settings-ack") return typeof x.bookId === "string" && typeof x.ver === "number";
   return false;
 }
 
@@ -167,6 +178,8 @@ function isEnvelope(value: unknown): value is LiveEnvelope {
 
 let publisher: { name: string; release: () => void } | null = null;
 let publisherIdle: number | null = null;
+// 방송 중인 화면(SongMode/ConcertMode)도 오버레이의 "설정 요청"에 답한다 — 설정 화면이 닫혀 있어도 새로 연결된 OBS가 현재 설정을 받을 수 있게
+let settingsResponder: { name: string; off: () => void } | null = null;
 let lastBookId: string | null = null;
 
 function ensurePublisherLink(bookId: string) {
@@ -182,6 +195,13 @@ function ensurePublisherLink(bookId: string) {
   if (!publisher) {
     const acquired = acquireLink(name);
     if (acquired) publisher = { name, release: acquired.release };
+  }
+  if (!settingsResponder || settingsResponder.name !== name) {
+    settingsResponder?.off();
+    settingsResponder = {
+      name,
+      off: subscribeSettingsChannel({ bookId, key: getLiveKey(bookId) }, { onRequest: () => sendCachedSettings(bookId) }),
+    };
   }
   return publisher ? name : null;
 }
@@ -208,6 +228,8 @@ export function publishLive(input: LiveStateInput, kind: "state" | "heartbeat" =
     // 저장소가 막혀 있어도 전송은 계속한다
   }
   sendEnvelope(input.bookId, { type: kind, sid: SESSION_ID, ts, state });
+  // heartbeat(5초)마다 마지막 오버레이 설정도 함께 내보낸다: 늦게 연결된 OBS가 요청 없이도 최신 설정을 받는다 (ver가 같으면 오버레이가 무시)
+  if (kind === "heartbeat") sendCachedSettings(input.bookId);
 }
 
 export function clearLive(): void {
@@ -223,6 +245,8 @@ export function clearLive(): void {
     publisherIdle = window.setTimeout(() => {
       publisher?.release();
       publisher = null;
+      settingsResponder?.off();
+      settingsResponder = null;
       publisherIdle = null;
     }, 15000);
   }
@@ -253,7 +277,7 @@ export function subscribeLive(onChange: (state: LiveState | null) => void, targe
   const seen = new Map<string, number>();
 
   const handle = (env: LiveEnvelope) => {
-    if (env.type === "ack") return;
+    if (env.type !== "state" && env.type !== "heartbeat" && env.type !== "clear") return;
     if (target) {
       const bookId = env.type === "clear" ? env.bookId : env.state.bookId;
       if (bookId !== target.bookId) return;
@@ -308,6 +332,125 @@ export function subscribeLiveStatus(target: LiveTarget, onStatus: (status: LinkS
   return () => {
     off();
     acquired.release();
+  };
+}
+
+// ---------------- 오버레이 설정 동기화 ----------------
+
+const SETTINGS_CACHE_PREFIX = "songbook:overlay-live-settings:";
+const RECEIVED_PREFIX = "songbook:overlay-received:";
+let lastSettingsVer = 0;
+
+/** 설정 버전: 같은 브라우저 안에서 항상 증가하는 시각 기반 값 */
+export function nextSettingsVer(): number {
+  lastSettingsVer = Math.max(Date.now(), lastSettingsVer + 1);
+  return lastSettingsVer;
+}
+
+export interface VersionedSettings {
+  ver: number;
+  settings: unknown;
+}
+
+function readVersioned(key: string): VersionedSettings | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const v = JSON.parse(raw) as Partial<VersionedSettings> | null;
+    return v && typeof v.ver === "number" && v.settings && typeof v.settings === "object" ? { ver: v.ver, settings: v.settings } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 이 브라우저(설정 화면을 쓰는 곳)가 마지막으로 방송한 오버레이 설정 */
+export function readOverlaySettingsCache(bookId: string): VersionedSettings | null {
+  return readVersioned(SETTINGS_CACHE_PREFIX + bookId);
+}
+
+/** OBS(오버레이)가 마지막으로 받은 설정 — OBS 브라우저 소스를 새로고침해도 최신 디자인을 유지하기 위해 저장한다 */
+export function readReceivedSettings(target: { bookId: string; key?: string | null }): VersionedSettings | null {
+  return readVersioned(`${RECEIVED_PREFIX}${target.bookId}:${target.key ?? ""}`);
+}
+export function saveReceivedSettings(target: { bookId: string; key?: string | null }, value: VersionedSettings): void {
+  try {
+    localStorage.setItem(`${RECEIVED_PREFIX}${target.bookId}:${target.key ?? ""}`, JSON.stringify(value));
+  } catch {
+    // 저장소를 못 써도 실시간 반영은 계속된다
+  }
+}
+
+/** 설정 화면 → 연결된 모든 오버레이: 현재 설정을 보낸다. 반환값은 이 설정의 버전. */
+export function publishOverlaySettings(bookId: string, settings: unknown, ver: number = nextSettingsVer()): number {
+  try {
+    localStorage.setItem(SETTINGS_CACHE_PREFIX + bookId, JSON.stringify({ ver, settings }));
+  } catch {
+    // ignore
+  }
+  sendEnvelope(bookId, { type: "settings", sid: SESSION_ID, ts: nextTs(), bookId, ver, settings });
+  return ver;
+}
+
+function sendCachedSettings(bookId: string): void {
+  const cached = readOverlaySettingsCache(bookId);
+  if (cached) sendEnvelope(bookId, { type: "settings", sid: SESSION_ID, ts: nextTs(), bookId, ver: cached.ver, settings: cached.settings });
+}
+
+function sendViaTarget(target: { bookId: string; key?: string | null }, env: LiveEnvelope): void {
+  const acquired = isValidLiveKey(target.key) ? acquireLink(liveChannelName({ bookId: target.bookId, key: target.key })) : null;
+  if (acquired) {
+    acquired.link.send(env);
+    acquired.release();
+  }
+  getLocalChannel()?.postMessage(env);
+}
+
+/** 오버레이 → "현재 설정을 주세요" */
+export function requestOverlaySettings(target: { bookId: string; key?: string | null }): void {
+  sendViaTarget(target, { type: "settings-request", sid: SESSION_ID, ts: nextTs(), bookId: target.bookId });
+}
+
+/** 오버레이 → "이 버전을 적용했어요 / 아직 연결돼 있어요" */
+export function sendOverlaySettingsAck(target: { bookId: string; key?: string | null }, ver: number): void {
+  sendViaTarget(target, { type: "settings-ack", sid: SESSION_ID, ts: nextTs(), bookId: target.bookId, ver });
+}
+
+export interface SettingsChannelHandlers {
+  onSettings?: (settings: unknown, ver: number, sid: string) => void;
+  onRequest?: (sid: string) => void;
+  onAck?: (sid: string, ver: number) => void;
+}
+
+/**
+ * 설정 동기화 메시지(settings / settings-request / settings-ack)를 구독한다.
+ * 곡 상태 구독(subscribeLive)과 같은 채널·같은 중복 제거 규칙을 쓰지만 서로 영향을 주지 않는다.
+ * key가 있으면 Realtime 채널도 함께 듣고, 없으면 같은 브라우저 안의 채널만 듣는다.
+ */
+export function subscribeSettingsChannel(target: { bookId: string; key?: string | null }, h: SettingsChannelHandlers): () => void {
+  const seen = new Map<string, number>();
+  const handle = (env: LiveEnvelope) => {
+    if (env.type !== "settings" && env.type !== "settings-request" && env.type !== "settings-ack") return;
+    if (env.bookId !== target.bookId) return;
+    const last = seen.get(env.sid) ?? -1;
+    if (env.ts <= last) return;
+    seen.set(env.sid, env.ts);
+    if (env.type === "settings") h.onSettings?.(env.settings, env.ver, env.sid);
+    else if (env.type === "settings-request") h.onRequest?.(env.sid);
+    else h.onAck?.(env.sid, env.ver);
+  };
+  const ch = getLocalChannel();
+  const onLocal = (e: MessageEvent<unknown>) => {
+    if (isEnvelope(e.data)) handle(e.data);
+  };
+  ch?.addEventListener("message", onLocal);
+  const acquired = isValidLiveKey(target.key) ? acquireLink(liveChannelName({ bookId: target.bookId, key: target.key })) : null;
+  const off = acquired?.link.onMessage((payload) => {
+    if (isEnvelope(payload)) handle(payload);
+  });
+  return () => {
+    ch?.removeEventListener("message", onLocal);
+    off?.();
+    acquired?.release();
   };
 }
 

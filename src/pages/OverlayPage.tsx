@@ -1,16 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { OverlayView } from "../components/overlay/OverlayView";
-import { parseOverlaySettings } from "../types/overlay";
+import { parseOverlaySettings, sanitizeOverlaySettings, type OverlaySettings } from "../types/overlay";
 import {
   LIVE_STALE_MS,
   isValidLiveKey,
   readLive,
+  readOverlaySettingsCache,
+  readReceivedSettings,
+  requestOverlaySettings,
+  saveReceivedSettings,
   sendLiveAck,
+  sendOverlaySettingsAck,
   subscribeLive,
+  subscribeLiveStatus,
+  subscribeSettingsChannel,
   type LiveState,
   type LiveTarget,
 } from "../utils/liveBroadcast";
+
+/** OBS가 "아직 연결돼 있어요"를 설정 화면에 알리는 간격 (연결된 OBS 수/적용 확인 표시용, 곡 상태 heartbeat와는 별개) */
+const PRESENCE_MS = 10000;
 
 /**
  * OBS 브라우저 소스용 방송 오버레이 (/overlay?...).
@@ -19,9 +29,12 @@ import {
  */
 export function OverlayPage() {
   const [params] = useSearchParams();
-  const settings = useMemo(() => parseOverlaySettings(params), [params]);
+  // URL에 들어 있는 설정은 "처음 모습"일 뿐이다. 설정 화면에서 보낸 최신 설정이 오면 그것으로 바뀐다 (OBS URL을 다시 만들 필요 없음).
+  const urlSettings = useMemo(() => parseOverlaySettings(params), [params]);
   const bookFilter = params.get("book");
   const liveKey = params.get("lk");
+  // fx=1: 이 URL의 디자인에 고정 (실시간 설정 동기화를 따르지 않는다). 서로 다른 디자인의 오버레이를 같이 쓰고 싶을 때만 사용.
+  const fixed = params.get("fx") === "1";
 
   // 실시간 채널은 노래책 id + 방송 키가 모두 올바를 때만 연다 (키 없는 옛 URL은 같은 브라우저 안에서만 동작)
   const target = useMemo<LiveTarget | undefined>(
@@ -29,6 +42,18 @@ export function OverlayPage() {
     [bookFilter, liveKey]
   );
 
+  // 설정 우선순위: Realtime으로 받은 최신 설정 > OBS가 마지막으로 받아 둔 설정(새로고침해도 유지) > URL 설정 > 기본값.
+  // 같은 브라우저에서 열었을 때는 설정 화면이 저장해 둔 최신 설정도 후보에 넣고, 버전이 가장 큰 것을 쓴다.
+  const [applied, setApplied] = useState<{ settings: OverlaySettings; ver: number }>(() => {
+    if (fixed || !bookFilter) return { settings: urlSettings, ver: 0 };
+    const candidates = [readReceivedSettings({ bookId: bookFilter, key: liveKey }), readOverlaySettingsCache(bookFilter)].filter(
+      (c): c is NonNullable<typeof c> => c !== null
+    );
+    const best = candidates.sort((a, b) => b.ver - a.ver)[0];
+    return best ? { settings: sanitizeOverlaySettings(best.settings), ver: best.ver } : { settings: urlSettings, ver: 0 };
+  });
+  const settings = fixed ? urlSettings : applied.settings;
+  const verRef = useRef(applied.ver);
   const [live, setLive] = useState<LiveState | null>(() => readLive());
   const [stale, setStale] = useState(false);
   const [everConnected, setEverConnected] = useState(() => readLive() !== null);
@@ -72,6 +97,38 @@ export function OverlayPage() {
       }
     }, target);
   }, [target]);
+
+  // 설정 동기화: 설정 화면(또는 방송 중인 화면)이 보내는 최신 설정을 받는다. 버전이 더 큰 것만 적용해서 오래된 설정이 최신 설정을 덮지 못한다.
+  useEffect(() => {
+    if (fixed || !bookFilter) return;
+    const settingsTarget = { bookId: bookFilter, key: target?.key };
+    const off = subscribeSettingsChannel(settingsTarget, {
+      onSettings: (raw, ver) => {
+        if (ver <= verRef.current) {
+          sendOverlaySettingsAck(settingsTarget, verRef.current); // 이미 적용한 버전: 확인만 다시 알려준다
+          return;
+        }
+        verRef.current = ver;
+        const next = sanitizeOverlaySettings(raw);
+        setApplied({ settings: next, ver });
+        saveReceivedSettings(settingsTarget, { ver, settings: next });
+        sendOverlaySettingsAck(settingsTarget, ver);
+      },
+    });
+    // 연결되면 현재 설정을 요청하고(설정 화면이 열려 있으면 바로 응답), 이후에는 10초마다 "살아 있어요"만 알린다
+    const offStatus = target
+      ? subscribeLiveStatus(target, (status) => {
+          if (status === "connected") requestOverlaySettings(settingsTarget);
+        })
+      : (requestOverlaySettings(settingsTarget), () => undefined);
+    sendOverlaySettingsAck(settingsTarget, verRef.current);
+    const ping = window.setInterval(() => sendOverlaySettingsAck(settingsTarget, verRef.current), PRESENCE_MS);
+    return () => {
+      off();
+      offStatus();
+      window.clearInterval(ping);
+    };
+  }, [fixed, bookFilter, target]);
 
   // 오래 아무것도 못 받았는지 2초마다 확인 (상태가 그대로면 리렌더 없음)
   useEffect(() => {
