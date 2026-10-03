@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 // YouTube IFrame Player API의 최소 타입만 선언 (공식 @types 패키지를 새로 추가하지 않기 위함)
 interface YTPlayer {
   getCurrentTime(): number;
+  /** 영상 길이(초). 메타데이터가 아직 없으면 0 또는 undefined */
+  getDuration?(): number;
   destroy(): void;
 }
 interface YTPlayerEvent {
@@ -63,6 +65,8 @@ const EMBED_BLOCKED_ERROR_CODES = new Set([2, 5, 100, 101, 150]);
 
 export interface YouTubePlayerState {
   currentTime: number;
+  /** 영상 길이(초). 아직 모르면 0 — MR 길이와 원곡 길이 비교(싱크 보정 안내)에 쓴다 */
+  duration: number;
   /** true면 이 영상은 임베드 재생이 막혀있거나 재생할 수 없는 상태 */
   playbackError: boolean;
 }
@@ -96,6 +100,7 @@ export function useYouTubePlayer(
   const intervalRef = useRef<number | null>(null);
   const bufferingTimeoutRef = useRef<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState(false);
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
@@ -106,6 +111,7 @@ export function useYouTubePlayer(
     setPlaybackError(false);
     // 곡(영상)이 바뀌면 이전 곡의 재생 시간을 버린다 — 안 그러면 새 곡 가사가 이전 곡 시간 기준으로 계산된다.
     setCurrentTime(0);
+    setDuration(0);
 
     function clearBufferingTimeout() {
       if (bufferingTimeoutRef.current !== null) {
@@ -158,6 +164,10 @@ export function useYouTubePlayer(
               clearBufferingTimeout();
             }
 
+            // 영상 길이는 재생이 시작된 뒤에 확실히 알 수 있다 (MR 길이 ↔ 원곡 길이 비교용, 한 번만 읽는다)
+            const d = playerRef.current?.getDuration?.();
+            if (typeof d === "number" && d > 0) setDuration(d);
+
             if (e.data === YT_STATE_PLAYING) {
               intervalRef.current = window.setInterval(() => {
                 const t = playerRef.current?.getCurrentTime();
@@ -189,5 +199,5 @@ export function useYouTubePlayer(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, videoId, enabled]);
 
-  return { currentTime, playbackError };
+  return { currentTime, duration, playbackError };
 }

@@ -1,0 +1,138 @@
+/**
+ * 자동 가사 검색 + 자동 싱크 공통 타입.
+ * 기존 LRC 시스템(utils/lyrics.ts)과 호환된다: 결과는 "[mm:ss.xx] 가사" 텍스트로 변환되어 기존 파서/SongMode/ConcertMode/OBS 전송 경로를 그대로 탄다.
+ */
+
+/** 단어(또는 음절/글자) 단위 타이밍 — 지금은 비어 있을 수 있고, 나중에 karaoke 하이라이트에 쓴다. */
+export interface SyncedWord {
+  time: number;
+  text: string;
+}
+
+export interface SyncedLyricLine {
+  /** 기준(reference) 녹음 기준 초. matched=false 인 줄은 null — 시간을 지어내지 않는다 */
+  time: number | null;
+  text: string;
+  /** 신뢰할 수 있는 소스에서 이 줄의 시간을 얻었는가 */
+  matched: boolean;
+  /** 줄 단위 신뢰도 0~1 (정렬 유사도 등). 모르면 생략 */
+  confidence?: number;
+  words?: SyncedWord[];
+}
+
+export interface LyricsCandidate {
+  id: string;
+  title: string;
+  artist: string;
+  album?: string;
+  /** 기준 녹음 길이(초) */
+  duration?: number;
+  plainLyrics?: string;
+  /** LRC 형식 싱크 가사 */
+  syncedLyrics?: string;
+  instrumental?: boolean;
+  source: string;
+}
+
+export interface ScoredCandidate extends LyricsCandidate {
+  /** 곡 정보(제목/가수) 일치 신뢰도 0~1 */
+  confidence: number;
+  titleSimilarity: number;
+  artistSimilarity: number;
+  /** 라이브/리믹스 등 다른 버전으로 보이는가 */
+  versionMismatch: boolean;
+}
+
+export interface LyricsProvider {
+  readonly name: string;
+  search(title: string, artist: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+}
+
+// ---------------------------------------------------------------- 싱크 엔진 추상화
+
+export interface ReferenceAudio {
+  /** 사용자가 합법적으로 제공한 보컬 포함 오디오(파일 업로드 등). YouTube에서 오디오를 내려받지 않는다. */
+  url: string;
+  durationSec?: number;
+}
+
+export interface SyncInput {
+  title: string;
+  artist: string;
+  /** 저장된/사용할 평문 가사 */
+  lyrics?: string;
+  /** provider 가 준 LRC (기준 녹음 타임라인) */
+  syncedLyrics?: string;
+  referenceAudio?: ReferenceAudio;
+  language?: string;
+}
+
+export type SyncStatus = "synced" | "partially-synced" | "unsynced" | "failed";
+
+export interface SyncResult {
+  status: SyncStatus;
+  lines: SyncedLyricLine[];
+  confidence?: number;
+  /** 시간을 얻은 줄의 비율 0~1 */
+  coverage?: number;
+  source?: string;
+  generatedAt?: string;
+  message?: string;
+}
+
+export interface LyricsSynchronizer {
+  readonly name: string;
+  synchronize(input: SyncInput): Promise<SyncResult>;
+}
+
+// ---------------------------------------------------------------- MR 타임라인 변환
+
+/** 기준 녹음 시간 t → MR 재생 시간: offset + ratio * t */
+export interface Warp {
+  offset: number;
+  ratio: number;
+}
+export const IDENTITY_WARP: Warp = { offset: 0, ratio: 1 };
+
+// ---------------------------------------------------------------- 캐시 항목
+
+export type SyncOutcome =
+  | "synced"
+  | "partial"
+  | "lyrics-only"
+  | "no-sync"
+  | "needs-choice"
+  | "mismatch"
+  | "not-found";
+
+export interface CandidateSummary {
+  id: string;
+  title: string;
+  artist: string;
+  duration?: number;
+  hasSynced: boolean;
+  confidence: number;
+}
+
+export interface SyncEntry {
+  v: 1;
+  songId: string;
+  /** 무효화 판단용: 제목/가수/저장된 가사가 바뀌면 이 항목은 버린다 */
+  titleKey: string;
+  artistKey: string;
+  lyricsHash: string;
+  createdAt: number;
+  outcome: SyncOutcome;
+  source?: string;
+  candidate?: { id: string; title: string; artist: string; duration?: number };
+  confidence?: number;
+  coverage?: number;
+  /** 기준 타임라인의 줄 (저장된 가사가 있으면 그 줄 순서, 없으면 provider 줄) */
+  lines: SyncedLyricLine[];
+  /** lyrics-only 일 때 표시할 평문 */
+  plainLyrics?: string;
+  options?: CandidateSummary[];
+  /** 영상(MR) 별 보정값. key = youtubeVideoId (없으면 "") */
+  warps: Record<string, Warp>;
+  warnings: string[];
+}

@@ -1,5 +1,7 @@
 import { useNavigate, useParams } from "react-router-dom";
 import { DifficultyDots } from "../components/song/DifficultyDots";
+import { useAutoLyrics } from "../hooks/useAutoLyrics";
+import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { ChevronLeft, Mic, Pencil, Trash2, ListPlus } from "lucide-react";
 import type { Song } from "../types/song";
 import { FavoriteButton } from "../components/song/FavoriteButton";
@@ -23,7 +25,10 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   const { profile: currentUser } = useAuth();
   const { favoriteIds, toggle: toggleFavorite } = useFavorites(currentUser?.id);
   const song = songs.find((s) => s.id === id);
+  // 소유자에게만 "자동 가사/싱크" 관리 패널을 보여준다 (후보 선택, 다시 찾기, 결과 지우기, 켜기/끄기). 화면에 보이는 저장된 가사는 바꾸지 않는다.
   const isOwner = canManageBook(currentUser, ownerId);
+  const isOwnerForAuto = isOwner && Boolean(song);
+  const auto = useAutoLyrics(isOwnerForAuto ? song : undefined);
   const { playlists } = usePlaylists(isOwner ? ownerId : undefined);
   const { design } = useBookDesign(ownerId);
   const bookStyle = {
@@ -249,6 +254,15 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
               >
                 {song.chords}
               </pre>
+            </div>
+          )}
+
+          {isOwnerForAuto && (
+            <div className="mt-5">
+              <div className="text-xs mb-1.5" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
+                자동 가사 · 싱크
+              </div>
+              <AutoLyricsBar auto={auto} currentTime={0} mrDuration={0} showManage />
             </div>
           )}
 

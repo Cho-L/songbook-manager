@@ -26,6 +26,8 @@ import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
+import { useAutoLyrics } from "../hooks/useAutoLyrics";
+import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 
 interface SongModePageProps {
@@ -54,7 +56,10 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const playlistId = searchParams.get("playlist") ?? undefined;
-  const song = songs.find((s) => s.id === id);
+  const rawSong = songs.find((s) => s.id === id);
+  // 저장된 싱크 가사가 없으면 가사를 자동으로 찾아 싱크한 결과를 "song"으로 쓴다 (저장된 데이터는 바뀌지 않고, 이후 흐름은 기존 LRC 경로 그대로)
+  const auto = useAutoLyrics(rawSong);
+  const song = auto.song;
   const { profile: currentUser } = useAuth();
   const { favoriteIds, toggle: toggleFavorite } = useFavorites(currentUser?.id);
   const { songIds: playlistSongIds } = usePlaylistSongIds(playlistId);
@@ -109,7 +114,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const playerContainerId = song ? `songmode-yt-player-${song.id}` : "songmode-yt-player";
   // 영상이 있는 곡은 항상 IFrame Player API를 쓴다 — 재생 가능 여부(onError)를
   // 감지하려면 정적 iframe이 아니라 이 방식이어야 한다. 가사 싱크/연속재생 여부와 무관.
-  const { currentTime, playbackError } = useYouTubePlayer(
+  const { currentTime, duration, playbackError } = useYouTubePlayer(
     playerContainerId,
     song?.youtubeVideoId,
     Boolean(song?.youtubeVideoId),
@@ -422,6 +427,8 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             {displayedChords}
           </pre>
         )}
+
+        <AutoLyricsBar auto={auto} currentTime={currentTime} mrDuration={duration} />
 
         {lyricLines.length > 0 ? (
           <div

@@ -13,6 +13,8 @@ import { getChromeCssVars } from "../utils/color";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
+import { useAutoLyrics } from "../hooks/useAutoLyrics";
+import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
 import type { Song } from "../types/song";
 
@@ -77,7 +79,9 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
   const total = playlistSongIds.length;
   const finished = total > 0 && index >= total;
   const currentSongId = !finished ? playlistSongIds[index] : undefined;
-  const song = songs.find((s) => s.id === currentSongId);
+  const rawSong = songs.find((s) => s.id === currentSongId);
+  const auto = useAutoLyrics(rawSong);
+  const song = auto.song;
   const nextSongId = !finished && index + 1 < total ? playlistSongIds[index + 1] : undefined;
   const nextSong = nextSongId ? songs.find((s) => s.id === nextSongId) : undefined;
 
@@ -126,7 +130,7 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
     ? `concertmode-yt-player-${song.id}-${restartKey}`
     : "concertmode-yt-player";
   // 기존 SongMode와 동일한 IFrame Player 훅 재사용. onEnded로 다음 곡 자동 진행(연속 공연).
-  const { currentTime, playbackError } = useYouTubePlayer(
+  const { currentTime, duration, playbackError } = useYouTubePlayer(
     playerContainerId,
     song?.youtubeVideoId,
     Boolean(song?.youtubeVideoId),
@@ -337,6 +341,8 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
               {displayedChords}
             </pre>
           )}
+
+          <AutoLyricsBar auto={auto} currentTime={currentTime} mrDuration={duration} />
 
           {lyricLines.length > 0 ? (
             <div

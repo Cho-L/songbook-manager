@@ -1,0 +1,106 @@
+import type { CandidateSummary, LyricsCandidate, ScoredCandidate, SyncedLyricLine } from "./types";
+import { hasVersionWord, nameSimilarity, normalizeText, similarity } from "./text";
+
+// ---------------------------------------------------------------- 후보 점수
+
+/** 이 신뢰도 이상이면 사용자 확인 없이 자동 선택한다 */
+export const AUTO_ACCEPT_CONFIDENCE = 0.75;
+
+export function scoreCandidate(song: { title: string; artist: string }, c: LyricsCandidate): ScoredCandidate {
+  const titleSimilarity = nameSimilarity(song.title, c.title);
+  // 가수 정보가 없는 곡은 가수 항목을 중립(0.5)으로 본다
+  const artistSimilarity = song.artist.trim() ? nameSimilarity(song.artist, c.artist) : 0.5;
+  // 저장된 곡 제목에는 없는 "Live/Remix/Cover" 같은 표시가 후보에만 있으면 다른 버전일 가능성이 크다
+  const versionMismatch = hasVersionWord(c.title) && !hasVersionWord(song.title);
+  const hasLyrics = Boolean(c.syncedLyrics || c.plainLyrics);
+  let confidence = 0.55 * titleSimilarity + 0.3 * artistSimilarity + 0.1 * (c.syncedLyrics ? 1 : 0) + 0.05 * (hasLyrics ? 1 : 0);
+  if (versionMismatch) confidence -= 0.15;
+  confidence = Math.max(0, Math.min(1, confidence));
+  return { ...c, confidence, titleSimilarity, artistSimilarity, versionMismatch };
+}
+
+/** 쓸 수 없는 후보(연주곡, 가사 없음)를 빼고 신뢰도 순으로 정렬. 비슷한 점수에서는 싱크 가사가 있는 쪽을 앞에 둔다. */
+export function rankCandidates(song: { title: string; artist: string }, candidates: LyricsCandidate[]): ScoredCandidate[] {
+  return candidates
+    .filter((c) => !c.instrumental && (c.syncedLyrics || c.plainLyrics))
+    .map((c) => scoreCandidate(song, c))
+    .sort((a, b) => b.confidence - a.confidence || Number(Boolean(b.syncedLyrics)) - Number(Boolean(a.syncedLyrics)));
+}
+
+export function summarize(c: ScoredCandidate): CandidateSummary {
+  return { id: c.id, title: c.title, artist: c.artist, duration: c.duration, hasSynced: Boolean(c.syncedLyrics), confidence: Math.round(c.confidence * 100) / 100 };
+}
+
+// ---------------------------------------------------------------- 저장된 평문 가사 ↔ 싱크 가사 정렬
+
+/** 섹션 표기("[Verse]", "(후렴)")나 빈 줄은 정렬 대상이 아니다 */
+function isStructural(text: string): boolean {
+  const t = text.trim();
+  return t === "" || /^\[[^\]]*\]$/.test(t) || /^\([^)]*\)$/.test(t);
+}
+
+export const LINE_MATCH_THRESHOLD = 0.55;
+
+export interface AlignOutcome {
+  lines: SyncedLyricLine[];
+  matched: number;
+  total: number;
+  /** 시간을 얻은 줄의 비율 (정렬 대상 줄 기준) */
+  coverage: number;
+  /** 매칭된 줄의 평균 유사도 */
+  meanSimilarity: number;
+}
+
+/**
+ * 사용자가 저장해 둔 평문 가사 줄들을, provider 의 싱크 가사 줄들과 "순서를 지키며" 가장 잘 맞게 짝짓는다
+ * (가중 LCS 동적계획법). 같은 후렴이 여러 번 나와도 순서대로 대응되고,
+ * 짝을 못 찾은 줄은 시간 없이(matched=false) 둔다 — 이웃 줄 사이에서 시간을 지어내지 않는다.
+ */
+export function alignPlainToSynced(plainLines: string[], synced: SyncedLyricLine[]): AlignOutcome {
+  const U = plainLines.map((t) => ({ text: t, key: normalizeText(t), skip: isStructural(t) }));
+  const P = synced.filter((l) => l.time !== null && normalizeText(l.text) !== "").map((l) => ({ line: l, key: normalizeText(l.text) }));
+  const ui = U.map((u, i) => (u.skip ? -1 : i)).filter((i) => i >= 0);
+  const n = ui.length;
+  const m = P.length;
+  // sim[a][b]: a번째 대상 줄 ↔ b번째 provider 줄
+  const sim: number[][] = ui.map((i) => P.map((p) => similarity(U[i].key, p.key)));
+  // 뒤에서부터 계산하는 가중 LCS: dp[a][b] = 대상 줄 a.. 와 provider 줄 b.. 로 얻을 수 있는 최대 유사도 합.
+  // 앞에서부터 따라가며 "가능하면 가장 이른 대응"을 고르므로, 후렴이 한 번만 적힌 가사는 첫 번째 후렴에 붙는다.
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array<number>(m + 1).fill(0));
+  for (let a = n - 1; a >= 0; a--) {
+    for (let b = m - 1; b >= 0; b--) {
+      const s = sim[a][b];
+      const take = s >= LINE_MATCH_THRESHOLD ? s + dp[a + 1][b + 1] : -1;
+      dp[a][b] = Math.max(dp[a + 1][b], dp[a][b + 1], take);
+    }
+  }
+  const pairs = new Map<number, number>(); // 대상 줄 순번 → provider 순번
+  let a = 0;
+  let b = 0;
+  while (a < n && b < m) {
+    const s = sim[a][b];
+    if (s >= LINE_MATCH_THRESHOLD && Math.abs(dp[a][b] - (s + dp[a + 1][b + 1])) < 1e-9) {
+      pairs.set(a, b);
+      a++;
+      b++;
+    } else if (Math.abs(dp[a][b] - dp[a][b + 1]) < 1e-9) b++;
+    else a++;
+  }
+  const byUserIndex = new Map<number, { time: number; sim: number }>();
+  for (const [aIdx, bIdx] of pairs) byUserIndex.set(ui[aIdx], { time: P[bIdx].line.time as number, sim: sim[aIdx][bIdx] });
+  let simSum = 0;
+  const lines: SyncedLyricLine[] = U.map((u, i) => {
+    const hit = byUserIndex.get(i);
+    if (!hit) return { time: null, text: u.text, matched: false };
+    simSum += hit.sim;
+    return { time: hit.time, text: u.text, matched: true, confidence: Math.round(hit.sim * 100) / 100 };
+  });
+  const matched = byUserIndex.size;
+  return {
+    lines,
+    matched,
+    total: n,
+    coverage: n === 0 ? 0 : matched / n,
+    meanSimilarity: matched === 0 ? 0 : simSum / matched,
+  };
+}
