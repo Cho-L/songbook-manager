@@ -2,9 +2,13 @@
 
 const VERSION_WORDS = /\b(live|remix|acoustic|instrumental|inst\.?|cover|mr|ver\.?|version|karaoke)\b|라이브|리믹스|어쿠스틱|커버|반주|노래방/i;
 
-/** 비교용 정규화: 소문자, 기호/공백 제거, 한글·영문·숫자·가나·한자만 남긴다 */
+import { crossScriptSimilarity, hasHangul, hasLatin } from "./phonetic";
+
+/** 비교용 정규화: 악센트 제거(é→e), 소문자, 기호/공백 제거, 한글·영문·숫자·가나·한자만 남긴다 */
 export function normalizeText(s: string): string {
   return s
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
     .normalize("NFKC")
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, "");
@@ -44,14 +48,34 @@ export function similarity(a: string, b: string): number {
   return (2 * inter) / (a.length - 1 + (b.length - 1));
 }
 
-/** 제목/가수 유사도: Dice 와 "한쪽이 다른 쪽을 포함" 중 큰 값 (예: "밤편지" vs "밤편지 (Live)") */
-export function nameSimilarity(a: string, b: string): number {
+/**
+ * 제목 유사도: Dice 와 "한쪽이 다른 쪽을 포함" 중 큰 값 (예: "밤편지" vs "밤편지 (Live)").
+ * - 포함 관계는 짧은 쪽이 4글자 이상일 때만 인정한다 ("APT" 가 "Aptitude" 에 포함된다고 같은 곡으로 보지 않는다)
+ * - 한글 제목 ↔ 영문 제목("아파트" ↔ "APT")은 소리 비교로 보되, 짧으면 약한 근거(상한)로만 쓴다
+ * "APT." / "APT" / "APT!" / "apt." 는 기호 제거 후 모두 같다.
+ */
+export function titleSimilarityScore(a: string, b: string): number {
   const na = normalizeTitle(a);
   const nb = normalizeTitle(b);
   if (!na || !nb) return 0;
+  if (na === nb) return 1;
   const dice = similarity(na, nb);
-  const contains = na.includes(nb) || nb.includes(na) ? 0.9 : 0;
-  return Math.max(dice, contains);
+  const shorter = Math.min(na.length, nb.length);
+  const contains = shorter >= 4 && (na.includes(nb) || nb.includes(na)) ? 0.9 : 0;
+  let cross = 0;
+  if ((hasHangul(na) && !hasLatin(na) && hasLatin(nb) && !hasHangul(nb)) || (hasHangul(nb) && !hasLatin(nb) && hasLatin(na) && !hasHangul(na))) {
+    cross = crossScriptSimilarity(na, nb);
+  }
+  return Math.max(dice, contains, cross);
+}
+
+/** (이전 이름 유지) 제목/가수 공용으로 쓰이던 유사도 — 제목에는 titleSimilarityScore 를 쓴다 */
+export const nameSimilarity = titleSimilarityScore;
+
+/** 검색어용 제목: 끝의 기호와 (…) 부가 표기를 제거 ("APT." → "APT") */
+export function queryTitle(s: string): string {
+  const t = s.replace(/[([{（【][^)\]}）】]*[)\]}）】]/g, " ").replace(/[\s.!?~,·]+$/g, "").replace(/\s+/g, " ").trim();
+  return t || s.trim();
 }
 
 /** FNV-1a 32bit — 캐시 무효화용 짧은 해시 (보안 용도 아님) */

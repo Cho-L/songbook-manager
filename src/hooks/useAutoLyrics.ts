@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Song } from "../types/song";
 import { hasTimestamps, parseLyrics } from "../utils/lyrics";
+import { learnArtistAliases } from "../lyrics/artist";
 import { deleteEntry, isAutoLyricsEnabled, isExpired, readEntry, writeEntry } from "../lyrics/cache";
 import { LrclibProvider } from "../lyrics/providers/lrclib";
 import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyrics } from "../lyrics/pipeline";
@@ -110,6 +111,8 @@ export function useAutoLyrics(rawSong: Song | undefined) {
         if (id !== reqRef.current) return; // 곡이 바뀌었거나 더 새로운 요청이 있음 → 이 결과는 버린다
         writeEntry(result);
         setEntry(result);
+        // 사용자가 직접 확인한 후보면 아티스트 표기(예: 아이유 ↔ IU)를 별칭으로 기억해 다음 검색부터 바로 맞춘다
+        if (opts.candidateId && result.candidate) learnArtistAliases(artist, result.candidate.artist);
       } catch {
         if (id !== reqRef.current) return;
         setError("가사 서비스에 연결하지 못했어요"); // 일시적 실패는 캐시하지 않는다

@@ -1,4 +1,5 @@
-import { AUTO_ACCEPT_CONFIDENCE, rankCandidates, summarize } from "./matching";
+import { MEDIUM_CONFIDENCE, isAutoAccept, rankCandidates, summarize } from "./matching";
+import { searchCandidates } from "./searchPlan";
 import { formatLrc } from "./lrc";
 import { hashText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
@@ -45,18 +46,26 @@ export async function resolveLyrics(input: ResolveInput, provider: LyricsProvide
   const synchronizer = opts.synchronizer ?? new ProviderLyricsSynchronizer();
   const base = { v: 1 as const, songId: input.songId, ...entryKeys(input), createdAt: now(), lines: [], warps: {}, warnings: [] as string[] };
 
-  const candidates = await provider.search(input.title, input.artist, opts.signal); // 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
+  // 단계적 검색(엄격 → 느슨, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
+  const { candidates } = await searchCandidates(provider, input, opts.signal);
   const ranked = rankCandidates(input, candidates);
   if (ranked.length === 0) return { ...base, outcome: "not-found" };
 
-  // 점수가 거의 같으면(5% 이내) 싱크 가사가 있는 후보를 우선
+  const hasArtist = Boolean(input.artist.trim());
   let chosen = opts.candidateId ? ranked.find((c) => c.id === opts.candidateId) : undefined;
+  if (opts.candidateId && !chosen) return { ...base, outcome: "not-found", warnings: ["고른 후보를 다시 찾지 못했어요"] };
   if (!chosen) {
+    // high: 자동 선택 / medium: 후보 선택 UI / low: 실패 — 제목만 같은 다른 곡을 조용히 고르지 않는다
     const top = ranked[0];
-    chosen = ranked.find((c) => c.syncedLyrics && top.confidence - c.confidence <= 0.05) ?? top;
-    if (chosen.confidence < AUTO_ACCEPT_CONFIDENCE) {
-      return { ...base, outcome: "needs-choice", options: ranked.slice(0, 5).map(summarize), confidence: chosen.confidence };
+    if (!isAutoAccept(top, hasArtist)) {
+      const medium = ranked.filter((c) => c.confidence >= MEDIUM_CONFIDENCE);
+      if (medium.length === 0) {
+        return { ...base, outcome: "not-found", confidence: top.confidence, warnings: ["비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
+      }
+      return { ...base, outcome: "needs-choice", options: medium.slice(0, 5).map(summarize), confidence: medium[0].confidence };
     }
+    // 점수가 거의 같으면(5% 이내) 싱크 가사가 있는 후보를 우선 (자동 선택 조건을 만족하는 것 중에서)
+    chosen = ranked.find((c) => c.syncedLyrics && isAutoAccept(c, hasArtist) && top.confidence - c.confidence <= 0.05) ?? top;
   }
 
   const candidate = { id: chosen.id, title: chosen.title, artist: chosen.artist, duration: chosen.duration };

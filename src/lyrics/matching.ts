@@ -1,15 +1,21 @@
 import type { CandidateSummary, LyricsCandidate, ScoredCandidate, SyncedLyricLine } from "./types";
-import { hasVersionWord, nameSimilarity, normalizeText, similarity } from "./text";
+import { matchArtists } from "./artist";
+import { hasVersionWord, normalizeText, similarity, titleSimilarityScore } from "./text";
 
 // ---------------------------------------------------------------- 후보 점수
 
-/** 이 신뢰도 이상이면 사용자 확인 없이 자동 선택한다 */
+/** 이 신뢰도 이상(그리고 아래 조건 충족)이면 사용자 확인 없이 자동 선택한다 — high */
 export const AUTO_ACCEPT_CONFIDENCE = 0.75;
+/** 이 신뢰도 이상이면 후보 목록으로 보여 주고 사용자가 고르게 한다 — medium. 그 미만은 실패(low) 처리 */
+export const MEDIUM_CONFIDENCE = 0.5;
+/** 곡에 가수가 적혀 있으면, 자동 선택하려면 가수도 어느 정도 맞아야 한다 (제목만 같은 다른 곡 방지) */
+export const AUTO_ACCEPT_MIN_ARTIST = 0.55;
+export const AUTO_ACCEPT_MIN_TITLE = 0.6;
 
 export function scoreCandidate(song: { title: string; artist: string }, c: LyricsCandidate): ScoredCandidate {
-  const titleSimilarity = nameSimilarity(song.title, c.title);
-  // 가수 정보가 없는 곡은 가수 항목을 중립(0.5)으로 본다
-  const artistSimilarity = song.artist.trim() ? nameSimilarity(song.artist, c.artist) : 0.5;
+  const titleSimilarity = titleSimilarityScore(song.title, c.title);
+  // 가수는 목록으로 나눠 순서/구분자/한글·영문 표기 차이를 흡수해서 비교한다. 가수 정보가 없는 곡은 중립(0.5)
+  const artistSimilarity = song.artist.trim() ? matchArtists(song.artist, c.artist).score : 0.5;
   // 저장된 곡 제목에는 없는 "Live/Remix/Cover" 같은 표시가 후보에만 있으면 다른 버전일 가능성이 크다
   const versionMismatch = hasVersionWord(c.title) && !hasVersionWord(song.title);
   const hasLyrics = Boolean(c.syncedLyrics || c.plainLyrics);
@@ -17,6 +23,15 @@ export function scoreCandidate(song: { title: string; artist: string }, c: Lyric
   if (versionMismatch) confidence -= 0.15;
   confidence = Math.max(0, Math.min(1, confidence));
   return { ...c, confidence, titleSimilarity, artistSimilarity, versionMismatch };
+}
+
+/** high confidence: 점수 + 제목/가수 각각의 최소 조건까지 충족해야 사용자 확인 없이 자동 선택한다 */
+export function isAutoAccept(c: ScoredCandidate, songHasArtist: boolean): boolean {
+  return (
+    c.confidence >= AUTO_ACCEPT_CONFIDENCE &&
+    c.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE &&
+    (!songHasArtist || c.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST)
+  );
 }
 
 /** 쓸 수 없는 후보(연주곡, 가사 없음)를 빼고 신뢰도 순으로 정렬. 비슷한 점수에서는 싱크 가사가 있는 쪽을 앞에 둔다. */
