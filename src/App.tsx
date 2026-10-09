@@ -13,6 +13,7 @@ import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BookDesignPage } from "./pages/BookDesignPage";
 import { OverlayPage } from "./pages/OverlayPage";
+import { FeedbackHost } from "./components/ui/feedback";
 import { OverlaySettingsPage } from "./pages/OverlaySettingsPage";
 import { RequireOwner } from "./components/RequireOwner";
 
@@ -112,6 +113,7 @@ function AppShell() {
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/books/:ownerId/*" element={<BookRoutes />} />
       </Routes>
+      <FeedbackHost />
     </div>
   );
 }

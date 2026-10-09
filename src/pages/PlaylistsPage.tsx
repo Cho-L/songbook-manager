@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { confirmAsync, notify } from "../components/ui/feedback";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus, Trash2, ListMusic } from "lucide-react";
 import { usePlaylists } from "../hooks/usePlaylists";
@@ -36,17 +37,22 @@ export function PlaylistsPage() {
       setNewName("");
       navigate(`/books/${ownerId}/playlists/${created.id}`);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "플레이리스트 생성에 실패했어요.");
+      notify(e instanceof Error ? e.message : "플레이리스트를 만들지 못했어요. 잠시 후 다시 시도해주세요.", "error");
     } finally {
       setCreating(false);
     }
   }
 
   async function handleRemove(id: string, name: string) {
-    if (!confirm(`"${name}" 플레이리스트를 삭제하시겠습니까?\n(안의 곡 목록만 사라지고, 곡 자체는 삭제되지 않아요)`)) {
-      return;
-    }
+    const ok = await confirmAsync({
+      title: `"${name}" 플레이리스트를 삭제할까요?`,
+      message: "플레이리스트만 사라져요. 안에 담긴 노래 자체는 삭제되지 않아요.",
+      confirmLabel: "플레이리스트 삭제",
+      tone: "danger",
+    });
+    if (!ok) return;
     await removePlaylist(id);
+    notify(`"${name}" 플레이리스트를 삭제했어요.`);
   }
 
   return (
@@ -151,6 +157,7 @@ export function PlaylistsPage() {
                   className="p-2 hover:text-red-400 shrink-0"
                   style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                   aria-label="플레이리스트 삭제"
+                  title="플레이리스트 삭제 (확인 후 삭제)"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>

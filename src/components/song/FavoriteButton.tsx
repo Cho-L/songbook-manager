@@ -24,6 +24,7 @@ export function FavoriteButton({
       }}
       className={`p-2 hover:text-amber-400 transition ${colorClassName ?? "text-white/60"}`}
       aria-label="즐겨찾기 토글"
+      title="즐겨찾기"
     >
       <Star className={`${iconSize} ${active ? "fill-amber-400 text-amber-400" : ""}`} />
     </button>

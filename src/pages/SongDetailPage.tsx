@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from "react-router-dom";
+import { confirmAsync, notify } from "../components/ui/feedback";
 import { DifficultyDots } from "../components/song/DifficultyDots";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
@@ -58,9 +59,15 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
     );
   }
 
-  function handleDelete() {
+  async function handleDelete() {
     if (!song) return;
-    if (confirm(`정말 "${song.title}"을(를) 삭제하시겠습니까?`)) {
+    const ok = await confirmAsync({
+      title: `"${song.title}" 노래를 삭제할까요?`,
+      message: "가사, 코드, MR 정보가 모두 사라지고 되돌릴 수 없어요.",
+      confirmLabel: "노래 삭제",
+      tone: "danger",
+    });
+    if (ok) {
       onRemove(song.id);
       navigate(`/books/${ownerId}`);
     }
@@ -68,7 +75,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
 
   function handleFavoriteClick() {
     if (!currentUser) {
-      alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+      notify("즐겨찾기는 로그인 후에 쓸 수 있어요.", "info");
       return;
     }
     toggleFavorite(song!.id);
@@ -80,9 +87,10 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
     if (!playlistId || !song) return;
     try {
       await playlistRepository.addSong(playlistId, song.id);
-      alert("플레이리스트에 추가했어요.");
+      const name = playlists.find((p) => p.id === playlistId)?.name;
+      notify(name ? `"${name}" 플레이리스트에 추가했어요.` : "플레이리스트에 추가했어요.");
     } catch (err) {
-      alert(err instanceof Error ? err.message : "추가에 실패했어요.");
+      notify(err instanceof Error ? err.message : "플레이리스트에 추가하지 못했어요. 잠시 후 다시 시도해주세요.", "error");
     }
   }
 
@@ -94,6 +102,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
           className="p-2 -ml-2"
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
           aria-label="뒤로가기"
+          title="노래책으로 돌아가기"
         >
           <ChevronLeft className="h-5 w-5" />
         </button>
@@ -107,19 +116,20 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
             <>
               <button
                 onClick={() => navigate(`/books/${ownerId}/songs/${song.id}/edit`)}
-                className="p-2"
-                style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
+                className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg text-[13px] hover:brightness-125"
+                style={{ color: "var(--book-chrome-text, rgba(255,255,255,0.75))" }}
                 aria-label="수정"
+                title="가사·MR·코드 등 이 노래의 정보를 고쳐요"
               >
-                <Pencil className="h-[18px] w-[18px]" />
+                <Pencil className="h-4 w-4" /> 수정
               </button>
               <button
                 onClick={handleDelete}
-                className="p-2 hover:text-red-400"
-                style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.6))" }}
+                className="flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg text-[13px] text-red-400/80 hover:text-red-400"
                 aria-label="삭제"
+                title="이 노래를 삭제해요 (확인 후 삭제)"
               >
-                <Trash2 className="h-[18px] w-[18px]" />
+                <Trash2 className="h-4 w-4" /> 삭제
               </button>
             </>
           )}
@@ -188,8 +198,11 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
             className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3 text-[15px]"
             style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
           >
-            <Mic className="h-4 w-4" /> 노래 부르기 모드
+            <Mic className="h-4 w-4" /> 노래 부르기
           </button>
+          <p className="text-[12px] mt-1.5 text-center" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.45))" }}>
+            가사와 MR을 보면서 이 노래를 부르는 화면이에요
+          </p>
 
           {isOwner && playlists.length > 0 && (
             <div className="mt-3 relative">
@@ -260,7 +273,7 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
           {isOwnerForAuto && (
             <div className="mt-5">
               <div className="text-xs mb-1.5" style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}>
-                자동 가사 · 싱크
+                가사 자동 찾기
               </div>
               <AutoLyricsBar auto={auto} currentTime={0} mrDuration={0} showManage />
             </div>

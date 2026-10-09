@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { confirmAsync, notify } from "../components/ui/feedback";
 import {
   Plus,
   ChevronLeft,
@@ -162,7 +163,7 @@ export function HomePage({
 
   function handleFavoriteClick(songId: string) {
     if (!currentUser) {
-      alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+      notify("즐겨찾기는 로그인 후에 쓸 수 있어요.", "info");
       return;
     }
     toggleFavorite(songId);
@@ -174,14 +175,18 @@ export function HomePage({
   }
 
   async function handleDeleteBook() {
-    const confirmed = confirm(
-      `노래책을 삭제하시겠습니까?\n\n현재 등록된 ${songs.length}곡이 모두 삭제됩니다.\n이 작업은 되돌릴 수 없습니다.`
-    );
+    const confirmed = await confirmAsync({
+      title: "노래책의 모든 노래를 삭제할까요?",
+      message: `등록된 ${songs.length}곡이 모두 삭제돼요.\n이 작업은 되돌릴 수 없어요.`,
+      confirmLabel: `${songs.length}곡 모두 삭제`,
+      tone: "danger",
+    });
     if (!confirmed) return;
     try {
       await removeAllSongs();
+      notify("노래책의 모든 노래를 삭제했어요.");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "노래책 삭제에 실패했어요.");
+      notify(e instanceof Error ? e.message : "노래를 삭제하지 못했어요. 잠시 후 다시 시도해주세요.", "error");
     }
   }
 
@@ -212,9 +217,9 @@ export function HomePage({
       setImportPreview(result);
     } catch (err) {
       if (err instanceof BackupParseError) {
-        alert(err.message);
+        notify(err.message, "error");
       } else {
-        alert("파일을 처리하는 중 문제가 발생했어요. 파일 형식을 확인해주세요.");
+        notify("파일을 읽지 못했어요. JSON 또는 CSV 파일이 맞는지 확인해주세요.", "error");
       }
     } finally {
       setImporting(false);
@@ -240,18 +245,16 @@ export function HomePage({
         succeeded++;
       }
       await reload();
-      alert(
-        `Import 완료\n\n총 ${importPreview.totalRows}곡\n` +
-          `추가됨 ${succeeded}곡\n` +
-          `중복으로 건너뜀 ${skippedDuplicates}곡\n` +
-          `오류로 제외됨 ${importPreview.errors.length}곡` +
-          (importedWithWarnings > 0 ? `\n경고가 포함된 곡 ${importedWithWarnings}곡` : "")
+      notify(
+        `가져오기 완료 — 노래 ${succeeded}곡을 추가했어요.` +
+          (skippedDuplicates > 0 ? ` 중복 ${skippedDuplicates}곡은 건너뛰었어요.` : "") +
+          (importPreview.errors.length > 0 ? ` 오류가 있는 ${importPreview.errors.length}곡은 제외했어요.` : "") +
+          (importedWithWarnings > 0 ? ` (${importedWithWarnings}곡은 일부 값을 보정했어요.)` : "")
       );
     } catch (err) {
-      alert(
-        `${succeeded}/${toImport.length}곡까지 가져온 뒤 실패했어요: ${
-          err instanceof Error ? err.message : "알 수 없는 오류"
-        }`
+      notify(
+        `${toImport.length}곡 중 ${succeeded}곡까지 가져온 뒤 멈췄어요: ${err instanceof Error ? err.message : "알 수 없는 오류"}`,
+        "error"
       );
       await reload();
     } finally {
@@ -296,13 +299,19 @@ export function HomePage({
   async function handleBulkDelete() {
     const ids = [...selectedIds];
     if (ids.length === 0) return;
-    if (!confirm(`선택한 ${ids.length}곡을 삭제하시겠습니까?`)) return;
+    const ok = await confirmAsync({
+      title: `선택한 노래 ${ids.length}곡을 삭제할까요?`,
+      message: "삭제한 노래는 되돌릴 수 없어요.",
+      confirmLabel: `${ids.length}곡 삭제`,
+      tone: "danger",
+    });
+    if (!ok) return;
     const result = await removeManySongs(ids);
     setSelectedIds(new Set());
     if (result.failed > 0) {
-      alert(`${ids.length}곡 중 ${result.succeeded}곡 삭제 완료, ${result.failed}곡은 실패했어요.`);
+      notify(`노래 ${ids.length}곡 중 ${result.succeeded}곡을 삭제했고, ${result.failed}곡은 삭제하지 못했어요.`, "error");
     } else {
-      alert(`${result.succeeded}곡을 삭제했어요.`);
+      notify(`노래 ${result.succeeded}곡을 삭제했어요.`);
     }
   }
 
@@ -310,16 +319,15 @@ export function HomePage({
     const ids = [...selectedIds];
     if (ids.length === 0) return;
     if (!currentUser) {
-      alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+      notify("즐겨찾기는 로그인 후에 쓸 수 있어요.", "info");
       return;
     }
     const result = await setManyFavorites(ids, value);
+    const verb = value ? "즐겨찾기에 추가" : "즐겨찾기에서 해제";
     if (result.failed > 0) {
-      alert(
-        `${ids.length}곡 중 ${result.succeeded}곡 ${value ? "추가" : "해제"} 완료, ${result.failed}곡은 실패했어요.`
-      );
+      notify(`노래 ${ids.length}곡 중 ${result.succeeded}곡을 ${verb}했고, ${result.failed}곡은 처리하지 못했어요.`, "error");
     } else {
-      alert(`${result.succeeded}곡 즐겨찾기 ${value ? "추가" : "해제"} 완료.`);
+      notify(`노래 ${result.succeeded}곡을 ${verb}했어요.`);
     }
   }
 
@@ -339,9 +347,9 @@ export function HomePage({
     }
     setShowPlaylistPicker(false);
     if (failed > 0) {
-      alert(`${ids.length}곡 중 ${succeeded}곡 추가 완료, ${failed}곡은 실패했어요.`);
+      notify(`노래 ${ids.length}곡 중 ${succeeded}곡을 플레이리스트에 추가했고, ${failed}곡은 추가하지 못했어요.`, "error");
     } else {
-      alert(`${succeeded}곡을 플레이리스트에 추가했어요.`);
+      notify(`노래 ${succeeded}곡을 플레이리스트에 추가했어요.`);
     }
   }
 
@@ -383,16 +391,18 @@ export function HomePage({
             <button
               onClick={() => navigate(`/books/${ownerId}/design`)}
               className={NAV_LINK}
+              title="이 노래책의 색상과 노래 목록 모양을 꾸며요 (방문자에게도 똑같이 보여요)"
             >
-              <Palette className="h-3.5 w-3.5" /> 꾸미기
+              <Palette className="h-3.5 w-3.5" /> 노래책 꾸미기
             </button>
           )}
           {isOwner && (
             <button
               onClick={() => navigate(`/books/${ownerId}/overlay-settings`)}
               className={NAV_LINK}
+              title="OBS에 띄울 방송 화면(오버레이)을 만들고 연결해요"
             >
-              <Radio className="h-3.5 w-3.5" /> 방송
+              <Radio className="h-3.5 w-3.5" /> 방송 오버레이
             </button>
           )}
           <button
@@ -405,8 +415,9 @@ export function HomePage({
             <button
               onClick={() => navigate("/settings")}
               className={NAV_LINK}
+              title="노래 부르기 화면에서 내가 보는 글자 크기·글꼴·테마를 정해요 (내 계정에만 적용)"
             >
-              <Settings className="h-3.5 w-3.5" /> 설정
+              <Settings className="h-3.5 w-3.5" /> 내 설정
             </button>
           )}
           {currentUser && (
@@ -442,6 +453,7 @@ export function HomePage({
                     type="button"
                     onClick={toggleSelectionMode}
                     aria-pressed={selectionMode}
+                    title="여러 노래를 골라 한 번에 삭제하거나 즐겨찾기·플레이리스트에 담아요"
                     className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
                     style={
                       selectionMode
@@ -458,7 +470,7 @@ export function HomePage({
                     }
                   >
                     {selectionMode ? <X className="h-3.5 w-3.5" /> : <CheckSquare className="h-3.5 w-3.5" />}
-                    {selectionMode ? "선택 취소" : "선택"}
+                    {selectionMode ? "선택 취소" : "여러 곡 선택"}
                   </button>
                 )}
                 <span className="ml-auto">
@@ -597,16 +609,21 @@ export function HomePage({
         </>
       )}
 
-      {isOwner && songs.length > 0 && (
+      {isOwner && (
         <div className="px-5 lg:px-8 mt-10">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))]">데이터 백업</p>
+            <div className="min-w-0 flex-1 pr-2">
+              <p className="text-[12px] font-medium text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]">노래 가져오기 · 내보내기</p>
+              <p className="text-[11px] mt-0.5 text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))]">
+                다른 곳의 노래를 파일로 한꺼번에 옮겨오거나, 지금 노래들을 파일로 백업해요.
+              </p>
+            </div>
             <button
               type="button"
               onClick={() => setShowImportHelp((v) => !v)}
-              className="flex items-center gap-1 text-[11px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
+              className="shrink-0 whitespace-nowrap py-1.5 flex items-center gap-1 text-[11px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.4))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.7))]"
             >
-              <Info className="h-3 w-3" /> {showImportHelp ? "안내 닫기" : "사용법"}
+              <Info className="h-3 w-3" /> {showImportHelp ? "안내 닫기" : "가져오기 사용법"}
             </button>
           </div>
 
@@ -659,14 +676,18 @@ export function HomePage({
             <button
               type="button"
               onClick={handleExportJSON}
-              className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95"
+              disabled={songs.length === 0}
+              title={songs.length === 0 ? "내보낼 노래가 아직 없어요" : undefined}
+              className="disabled:opacity-40 flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95"
             >
               <Download className="h-3.5 w-3.5" /> JSON 내보내기
             </button>
             <button
               type="button"
               onClick={handleExportCSV}
-              className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95"
+              disabled={songs.length === 0}
+              title={songs.length === 0 ? "내보낼 노래가 아직 없어요" : undefined}
+              className="disabled:opacity-40 flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95"
             >
               <Download className="h-3.5 w-3.5" /> CSV 내보내기
             </button>
@@ -696,7 +717,7 @@ export function HomePage({
             onClick={handleDeleteBook}
             className="flex items-center gap-1.5 text-[12.5px] text-red-400/70 hover:text-red-400"
           >
-            <Trash2 className="h-3.5 w-3.5" /> 노래책 삭제
+            <Trash2 className="h-3.5 w-3.5" /> 노래책의 모든 노래 삭제
           </button>
         </div>
       )}
@@ -705,11 +726,11 @@ export function HomePage({
         <button
           type="button"
           onClick={() => navigate(`/books/${ownerId}/songs/new`)}
-          aria-label="곡 추가"
-          className="fixed bottom-20 right-5 h-14 w-14 flex items-center justify-center rounded-full text-[#14161F] shadow-lg z-40"
+          aria-label="노래 추가"
+          className="fixed bottom-20 right-5 h-12 pl-4 pr-5 flex items-center justify-center gap-1.5 rounded-full text-[#14161F] text-[14px] font-semibold shadow-lg z-40 transition-[filter] hover:brightness-110 active:brightness-95"
           style={{ backgroundColor: design.accentColor, maxWidth: "28rem" }}
         >
-          <Plus className="h-6 w-6" strokeWidth={2.5} />
+          <Plus className="h-5 w-5" strokeWidth={2.5} /> 노래 추가
         </button>
       )}
 
@@ -843,6 +864,8 @@ export function HomePage({
           </div>
         </div>
       )}
+      {/* 하단 고정 "노래 추가" 버튼이 마지막 항목을 가리지 않도록 여백 */}
+      {isOwner && <div className="h-24" aria-hidden="true" />}
     </div>
   );
 }

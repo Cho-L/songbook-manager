@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Check, ChevronLeft, Copy, Download, ExternalLink, RefreshCw, Upload } from "lucide-react";
 import { OverlayView } from "../components/overlay/OverlayView";
+import { confirmAsync, notify } from "../components/ui/feedback";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
 import { broadcastRepository, type BroadcastProfile, type ProfileSource } from "../services/broadcastRepository";
@@ -369,9 +370,15 @@ export function OverlaySettingsPage() {
     clearLive();
   }
 
-  function regenerateKey() {
+  async function regenerateKey() {
     if (!ownerId) return;
-    if (!window.confirm("방송 키를 새로 만들면 지금 OBS에 붙여넣은 URL은 더 이상 작동하지 않아요. 새 URL을 다시 붙여넣어야 합니다. 계속할까요?")) return;
+    const ok = await confirmAsync({
+      title: "방송 키를 다시 만들까요?",
+      message: "지금 OBS에 붙여넣은 URL은 더 이상 동작하지 않아요. 새 URL을 OBS에 다시 붙여넣어야 해요.",
+      confirmLabel: "방송 키 다시 만들기",
+      tone: "danger",
+    });
+    if (!ok) return;
     stopTest("idle");
     const fresh = regenerateLiveKey(ownerId);
     setLiveKey(fresh);
@@ -479,14 +486,23 @@ export function OverlaySettingsPage() {
     }
   }
 
-  function selectProfile(id: string) {
+  async function selectProfile(id: string) {
     if (!id) {
       rememberActive("");
       return;
     }
     const p = profiles.find((x) => x.id === id);
     if (!p) return;
-    if (dirty && !window.confirm("저장하지 않은 변경사항이 사라져요. 다른 프로필을 불러올까요?")) return;
+    if (
+      dirty &&
+      !(await confirmAsync({
+        title: "저장하지 않은 변경사항이 있어요",
+        message: "다른 프로필을 불러오면 지금 바꾼 설정이 사라져요.",
+        confirmLabel: "저장하지 않고 불러오기",
+        tone: "danger",
+      }))
+    )
+      return;
     setSettings(p.settings);
     rememberActive(p.id);
     setForm(null);
@@ -541,9 +557,15 @@ export function OverlaySettingsPage() {
     }, "복제하지 못했어요. 잠시 후 다시 시도해주세요.");
   }
 
-  function deleteActive() {
+  async function deleteActive() {
     if (!ownerId || !activeProfile) return;
-    if (!window.confirm(`"${activeProfile.name}" 프로필을 삭제할까요? 되돌릴 수 없어요. (현재 화면의 설정은 그대로 남아요)`)) return;
+    const ok = await confirmAsync({
+      title: `"${activeProfile.name}" 프로필을 삭제할까요?`,
+      message: "되돌릴 수 없어요. 지금 화면에 적용된 설정은 그대로 남아요.",
+      confirmLabel: "프로필 삭제",
+      tone: "danger",
+    });
+    if (!ok) return;
     void runProfileAction(async () => {
       await broadcastRepository.remove(ownerId, activeProfile.id);
       setProfiles((list) => list.filter((p) => p.id !== activeProfile.id));
@@ -552,9 +574,18 @@ export function OverlaySettingsPage() {
     }, "삭제하지 못했어요. 잠시 후 다시 시도해주세요.");
   }
 
-  function applyRecommended(i: number) {
+  async function applyRecommended(i: number) {
     const rec = RECOMMENDED_PROFILES[i];
-    if (dirty && !window.confirm("저장하지 않은 변경사항이 사라져요. 추천 설정을 적용할까요?")) return;
+    if (
+      dirty &&
+      !(await confirmAsync({
+        title: "저장하지 않은 변경사항이 있어요",
+        message: "추천 설정을 적용하면 지금 바꾼 설정이 사라져요.",
+        confirmLabel: "저장하지 않고 적용",
+        tone: "danger",
+      }))
+    )
+      return;
     setSettings(rec.build());
     rememberActive("");
     setProfileMsg({ kind: "ok", text: `"${rec.name}" 추천 설정을 적용했어요. 마음에 들면 프로필로 저장해보세요.` });
@@ -596,7 +627,7 @@ export function OverlaySettingsPage() {
       const input = document.getElementById("overlay-url") as HTMLInputElement | null;
       input?.focus();
       input?.select();
-      alert("자동 복사가 막혀 있어요. 선택된 주소를 직접 복사해주세요 (Ctrl+C).");
+      notify("자동 복사가 막혀 있어요. 선택된 주소를 직접 복사해주세요 (Ctrl+C).", "info");
     }
   }
 

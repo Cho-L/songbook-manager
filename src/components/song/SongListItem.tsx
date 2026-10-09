@@ -89,6 +89,7 @@ function FavoriteStar({ isFavorite, onFavoriteClick, size }: FavoriteStarProps) 
         onFavoriteClick();
       }}
       aria-label={isFavorite ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+      title={isFavorite ? "즐겨찾기 해제" : "즐겨찾기에 추가"}
       aria-pressed={isFavorite}
       className="p-2 -m-2 rounded-full"
     >
@@ -188,6 +189,7 @@ export function SongListItem({
               type="button"
               onClick={handlePlayClick}
               aria-label="노래 부르기"
+              title="노래 부르기 화면으로"
               className="h-7 w-7 rounded-full flex items-center justify-center transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
               style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
             >
@@ -246,6 +248,7 @@ export function SongListItem({
               type="button"
               onClick={handlePlayClick}
               aria-label="노래 부르기"
+              title="노래 부르기 화면으로"
               className="h-7 w-7 rounded-full flex items-center justify-center transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
               style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
             >

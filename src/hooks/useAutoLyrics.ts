@@ -27,6 +27,8 @@ export interface AutoStatus {
   text: string;
   /** 부가 안내(경고) */
   notes: string[];
+  /** 기술적인 세부 정보(출처, 일치도). 기본 화면에는 숨기고 "자세히 보기"에서만 보여준다 */
+  detail?: string;
 }
 
 let provider: LyricsProvider = new LrclibProvider();
@@ -46,13 +48,12 @@ export function describeStatus(args: {
 }): AutoStatus {
   const { searching, error, entry, ownSynced, enabled, mrDuration, videoId } = args;
   if (ownSynced) return { kind: "off", text: "", notes: [] };
-  if (searching) return { kind: "searching", text: "🎤 가사 찾는 중...", notes: [] };
-  if (error) return { kind: "failed", text: `❌ 자동 싱크 실패 — ${error}`, notes: [] };
+  if (searching) return { kind: "searching", text: "🎤 가사를 찾고 있어요...", notes: ["곡 제목과 가수 정보로 검색하고 있어요. 잠시만 기다려주세요."] };
+  if (error) return { kind: "failed", text: `❌ 자동 싱크에 실패했어요 — ${error}`, notes: ["잠시 후 \"다시 찾기\"를 눌러주세요."] };
   if (!enabled && !entry) return { kind: "off", text: "", notes: [] };
   if (!entry) return { kind: "off", text: "", notes: [] };
   const notes = [...entry.warnings];
-  const conf = entry.confidence !== undefined ? ` · 신뢰도 ${Math.round(entry.confidence * 100)}%` : "";
-  const src = entry.source ? `${entry.source}` : "";
+  const detail = [entry.source ? `출처 ${entry.source}` : "", entry.confidence !== undefined ? `일치도 ${Math.round(entry.confidence * 100)}%` : ""].filter(Boolean).join(" · ") || undefined;
   if (entry.outcome === "synced" || entry.outcome === "partial") {
     const cmp = compareDurations(entry.candidate?.duration, mrDuration);
     const warp = getWarp(entry, videoId);
@@ -63,15 +64,15 @@ export function describeStatus(args: {
     if (entry.outcome === "partial") {
       const matched = entry.lines.filter((l) => l.matched).length;
       const total = entry.lines.filter((l) => l.text.trim()).length;
-      return { kind: "partial", text: `⚠️ 일부 가사 싱크를 찾지 못했습니다 (${matched}/${total}줄)${conf}`, notes };
+      return { kind: "partial", text: `⚠️ 일부 가사의 싱크를 찾지 못했어요 (${matched}/${total}줄)`, notes, detail };
     }
-    return { kind: "synced", text: `✓ 자동 싱크 완료 (${src}${conf})`, notes };
+    return { kind: "synced", text: "✓ 가사를 찾아 싱크를 맞췄어요", notes, detail };
   }
   if (entry.outcome === "lyrics-only") return { kind: "lyrics-only", text: "가사만 찾았어요 — 싱크 정보가 없어 자동으로 따라가지는 않아요", notes };
   if (entry.outcome === "no-sync") return { kind: "no-sync", text: "싱크 정보를 찾지 못해 저장된 가사를 그대로 보여줘요", notes };
   if (entry.outcome === "needs-choice") return { kind: "needs-choice", text: "후보가 여러 개예요 — 맞는 곡을 골라 주세요", notes };
   if (entry.outcome === "mismatch") return { kind: "mismatch", text: "찾은 가사가 저장된 가사와 많이 달라서 적용하지 않았어요", notes };
-  return { kind: "not-found", text: "가사를 찾지 못했어요", notes };
+  return { kind: "not-found", text: "가사를 찾지 못했어요", notes: [...notes, "곡 제목과 가수가 정확한지 확인한 뒤 \"다시 찾기\"를 눌러보세요."] };
 }
 
 /**

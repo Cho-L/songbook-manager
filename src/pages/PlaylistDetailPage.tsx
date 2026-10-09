@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { notify } from "../components/ui/feedback";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, ChevronUp, ChevronDown, GripVertical, Play, X, Plus, Check, ListMusic } from "lucide-react";
 import { EmptyNotice } from "../components/song/EmptyState";
@@ -71,7 +72,7 @@ export function PlaylistDetailPage() {
       await reorder(newOrder);
     } catch (e) {
       console.error("플레이리스트 순서 저장 실패:", e);
-      alert("순서를 저장하지 못했어요. 이전 순서로 되돌립니다.");
+      notify("순서를 저장하지 못해서 이전 순서로 되돌렸어요.", "error");
     }
   }
 
@@ -134,9 +135,9 @@ export function PlaylistDetailPage() {
     setAdding(false);
     setShowAddPicker(false);
     if (failed > 0) {
-      alert(`${ids.length}곡 중 ${succeeded}곡 추가 완료, ${failed}곡은 실패했어요.`);
+      notify(`노래 ${ids.length}곡 중 ${succeeded}곡을 추가했고, ${failed}곡은 추가하지 못했어요.`, "error");
     } else {
-      alert(`${succeeded}곡을 추가했어요.`);
+      notify(`노래 ${succeeded}곡을 플레이리스트에 추가했어요.`);
     }
   }
 
@@ -178,7 +179,7 @@ export function PlaylistDetailPage() {
                   color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
                 }}
               >
-                <Plus className="h-3.5 w-3.5" /> 곡 추가
+                <Plus className="h-3.5 w-3.5" /> 노래 추가
               </button>
             )}
           </div>
@@ -191,7 +192,10 @@ export function PlaylistDetailPage() {
                 className="w-full flex items-center justify-center gap-2 rounded-xl font-medium py-3"
                 style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
               >
-                🎤 공연 시작
+                <span className="flex flex-col items-center leading-tight">
+                  <span>🎤 공연 모드로 시작</span>
+                  <span className="text-[11px] font-normal opacity-75 mt-0.5">곡을 이어서 공연·방송하는 전용 화면</span>
+                </span>
               </button>
               <button
                 type="button"
@@ -202,7 +206,12 @@ export function PlaylistDetailPage() {
                   color: "var(--book-chrome-text, rgba(255,255,255,0.8))",
                 }}
               >
-                <Play className="h-4 w-4" strokeWidth={2.5} /> 이어서 부르기
+                <span className="flex flex-col items-center leading-tight">
+                  <span className="flex items-center gap-2">
+                    <Play className="h-4 w-4" strokeWidth={2.5} /> 이어서 부르기
+                  </span>
+                  <span className="text-[11px] font-normal opacity-60 mt-0.5">노래 부르기 화면으로 순서대로</span>
+                </span>
               </button>
             </div>
           )}
@@ -218,7 +227,7 @@ export function PlaylistDetailPage() {
                 color: "var(--book-chrome-text, rgba(255,255,255,0.6))",
               }}
             >
-              <Plus className="h-3.5 w-3.5" /> 곡 추가
+              <Plus className="h-3.5 w-3.5" /> 노래 추가
             </button>
           )}
 
@@ -298,7 +307,7 @@ export function PlaylistDetailPage() {
             <EmptyNotice
               icon={<ListMusic className="h-5 w-5" strokeWidth={1.5} />}
               title="아직 곡이 없어요"
-              description={isOwner ? '"곡 추가" 버튼으로 이 플레이리스트에 곡을 담아보세요' : "이 플레이리스트에는 아직 곡이 담기지 않았어요"}
+              description={isOwner ? '"노래 추가" 버튼으로 이 플레이리스트에 노래를 담아보세요' : "이 플레이리스트에는 아직 곡이 담기지 않았어요"}
             />
           )}
 
@@ -364,6 +373,7 @@ export function PlaylistDetailPage() {
                             className="p-1.5 disabled:opacity-25"
                             style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                             aria-label="곡을 위로 이동"
+                            title="위로 이동"
                           >
                             <ChevronUp className="h-3.5 w-3.5" />
                           </button>
@@ -374,6 +384,7 @@ export function PlaylistDetailPage() {
                             className="p-1.5 disabled:opacity-25"
                             style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.4))" }}
                             aria-label="곡을 아래로 이동"
+                            title="아래로 이동"
                           >
                             <ChevronDown className="h-3.5 w-3.5" />
                           </button>
@@ -384,6 +395,7 @@ export function PlaylistDetailPage() {
                           className="p-1.5 hover:text-red-400 shrink-0"
                           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
                           aria-label="플레이리스트에서 제거"
+                          title="플레이리스트에서 빼기 (노래 자체는 삭제되지 않아요)"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>

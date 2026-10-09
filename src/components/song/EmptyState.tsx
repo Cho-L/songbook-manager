@@ -86,7 +86,11 @@ export function EmptyState({ query, onAddClick, onClearFilters }: EmptyStateProp
       className="py-20"
       icon={<Music2 className="h-5 w-5" strokeWidth={1.5} />}
       title="아직 등록된 노래가 없어요"
-      description={onAddClick ? "첫 번째 노래를 등록하면 이곳에 모여요" : "곧 노래가 채워질 거예요"}
+      description={
+        onAddClick
+          ? "노래를 추가하면 이곳에서 가사와 MR을 관리하고, 방송이나 공연에서 바로 재생할 수 있어요. 가진 노래 파일이 있다면 아래 \"가져오기\"로 한꺼번에 옮길 수도 있어요."
+          : "노래책 주인이 노래를 추가하면 이곳에 보여요."
+      }
       action={
         onAddClick && (
           <button
@@ -95,7 +99,7 @@ export function EmptyState({ query, onAddClick, onClearFilters }: EmptyStateProp
             className="flex items-center gap-1.5 rounded-full text-[13px] font-medium px-4 py-2 transition-[filter] duration-150 hover:brightness-110 active:brightness-95"
             style={{ backgroundColor: "var(--book-accent, #fbbf24)", color: "#14161F" }}
           >
-            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> 첫 번째 노래 등록하기
+            <Plus className="h-3.5 w-3.5" strokeWidth={2.5} /> 첫 노래 추가하기
           </button>
         )
       }

@@ -159,21 +159,21 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
       <div className="flex items-center justify-between px-4 lg:px-8 pt-5 pb-2">
         <button
           onClick={handleCancel}
-          className="p-2 -ml-2 text-white/60"
+          className="flex items-center gap-1 px-3 min-h-[40px] -ml-3 rounded-lg text-[14px] text-white/70 hover:text-white"
           aria-label="취소"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" /> 취소
         </button>
-        <span className="text-sm text-white/60">
-          {isEditing ? "곡 수정" : "곡 추가"}
+        <span className="text-sm text-white/70 font-medium">
+          {isEditing ? "노래 수정" : "노래 추가"}
         </span>
         <button
           onClick={handleSave}
           disabled={saving}
-          className="p-2 -mr-2 text-amber-300 disabled:opacity-50"
+          className="flex items-center gap-1.5 px-4 min-h-[40px] -mr-1 rounded-full text-[14px] font-semibold bg-amber-400 text-[#14161F] disabled:opacity-50 hover:brightness-110"
           aria-label="저장"
         >
-          <Check className="h-5 w-5" />
+          <Check className="h-4 w-4" /> {saving ? "저장 중..." : "저장"}
         </button>
       </div>
 

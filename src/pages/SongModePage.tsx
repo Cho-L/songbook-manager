@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { notify } from "../components/ui/feedback";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
@@ -215,6 +216,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
           }
           className={`p-2 -ml-2 shrink-0 ${tones.base}`}
           aria-label="뒤로가기"
+          title="돌아가기"
         >
           <ChevronLeft className="h-6 w-6" />
         </button>
@@ -374,7 +376,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
               active={currentUser ? favoriteIds.has(song.id) : false}
               onToggle={() => {
                 if (!currentUser) {
-                  alert("즐겨찾기는 로그인 후 이용할 수 있어요.");
+                  notify("즐겨찾기는 로그인 후에 쓸 수 있어요.", "info");
                   return;
                 }
                 toggleFavorite(song.id);

@@ -49,6 +49,14 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
           {status.text}
         </div>
       )}
+      {status.detail && (
+        <details className="mt-0.5">
+          <summary className="cursor-pointer select-none text-[12px] opacity-50 hover:opacity-80 min-h-[24px] inline-flex items-center">자세히 보기</summary>
+          <div className="text-[12px] opacity-60" data-testid="auto-lyrics-detail">
+            {status.detail}
+          </div>
+        </details>
+      )}
       {status.notes.map((n, i) => (
         <div key={i} className="opacity-60 text-[12px] mt-0.5" data-testid="auto-lyrics-note">
           {n}
@@ -102,10 +110,10 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
       {canTune && tuning && (
         <div className="mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="싱크 보정">
           <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(-0.5)} aria-label="가사를 0.5초 먼저">
-            −0.5초
+            −0.5초 <span className="opacity-60">(가사 빠르게)</span>
           </button>
           <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(0.5)} aria-label="가사를 0.5초 늦게">
-            +0.5초
+            +0.5초 <span className="opacity-60">(가사 늦게)</span>
           </button>
           <button
             type="button"
@@ -118,6 +126,9 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
           <button type="button" className={btn} style={btnStyle} onClick={() => auto.resetWarp()}>
             초기화
           </button>
+          <span className="basis-full opacity-55 text-[11.5px]">
+            가사가 노래보다 먼저 나오면 "가사 늦게", 늦게 나오면 "가사 빠르게"를 눌러 맞춰요. MR의 인트로가 원곡과 다를 때 쓰면 좋아요.
+          </span>
           <span data-testid="auto-lyrics-offset" className="opacity-70 text-[12px]">
             보정 {offset > 0 ? "+" : ""}
             {offset.toFixed(2)}초

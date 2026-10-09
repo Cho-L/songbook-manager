@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { confirmAsync, notify } from "../components/ui/feedback";
 import { Navigate, useNavigate } from "react-router-dom";
 import { ChevronLeft, Trash2 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
@@ -47,9 +48,12 @@ export function AdminPage() {
   }, [currentUser]);
 
   async function handleDeleteBook(row: UserRow) {
-    const confirmed = confirm(
-      `"${row.profile.name}"의 노래책을 삭제하시겠습니까?\n\n등록된 ${row.songCount}곡이 모두 삭제됩니다.\n계정 자체는 삭제되지 않으며, 이 작업은 되돌릴 수 없습니다.`
-    );
+    const confirmed = await confirmAsync({
+      title: `"${row.profile.name}"의 노래를 모두 삭제할까요?`,
+      message: `등록된 ${row.songCount}곡이 모두 삭제돼요.\n계정 자체는 삭제되지 않지만, 이 작업은 되돌릴 수 없어요.`,
+      confirmLabel: `${row.songCount}곡 모두 삭제`,
+      tone: "danger",
+    });
     if (!confirmed) return;
 
     setDeletingId(row.profile.id);
@@ -59,7 +63,7 @@ export function AdminPage() {
         prev.map((r) => (r.profile.id === row.profile.id ? { ...r, songCount: 0 } : r))
       );
     } catch (e) {
-      alert(e instanceof Error ? e.message : "노래책 삭제에 실패했어요.");
+      notify(e instanceof Error ? e.message : "노래를 삭제하지 못했어요. 잠시 후 다시 시도해주세요.", "error");
     } finally {
       setDeletingId(null);
     }

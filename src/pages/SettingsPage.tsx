@@ -48,9 +48,30 @@ export function SettingsPage() {
         <ChevronLeft className="h-4 w-4" /> 뒤로가기
       </button>
       <h1 className="text-xl font-semibold font-serif mt-4">내 설정</h1>
-      <p className="text-white/40 text-[13px] mt-1.5">
-        이 설정은 이 계정에만 적용되고, 다른 사용자에게는 영향을 주지 않아요.
+      <p className="text-white/55 text-[13px] mt-1.5">
+        노래 부르기·공연 화면에서 <b className="font-medium text-white/75">내가 보는 모양</b>(글자 크기, 글꼴, 색상, 테마)을 정해요.
+        이 설정은 이 계정에만 적용되고, 다른 사람에게는 영향을 주지 않아요.
       </p>
+      {currentUser && (
+        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-3.5 text-[12.5px] text-white/55 leading-relaxed" data-testid="settings-where">
+          <p className="text-white/75 font-medium mb-1">다른 설정은 어디에 있나요?</p>
+          <ul className="space-y-1">
+            <li>
+              · 노래책의 색상·노래 목록 모양(방문자에게도 보여요) →{" "}
+              <button type="button" className="underline text-amber-300/90 hover:text-amber-300" onClick={() => navigate(`/books/${currentUser.id}/design`)}>
+                노래책 꾸미기
+              </button>
+            </li>
+            <li>
+              · OBS 방송 화면(오버레이)과 방송 프로필 →{" "}
+              <button type="button" className="underline text-amber-300/90 hover:text-amber-300" onClick={() => navigate(`/books/${currentUser.id}/overlay-settings`)}>
+                방송 오버레이
+              </button>
+            </li>
+            <li>· 한 노래의 가사·MR·싱크 → 그 노래의 상세 화면</li>
+          </ul>
+        </div>
+      )}
 
       {error && (
         <p className="text-[13px] text-red-400 mt-3">
