@@ -32,12 +32,15 @@ export interface LiveSong {
   bpm?: number;
   difficulty?: number;
   youtubeVideoId?: string;
+  /** 신청곡이면 신청자 표시 이름. 일반 재생(신청자 없음)이면 비어 있다 — 옛 발신자도 이 필드 없이 정상 동작한다 */
+  requester?: string;
 }
 
 export interface LiveQueueItem {
   id: string;
   title: string;
   artist: string;
+  requester?: string;
 }
 
 export interface LiveState {
@@ -55,6 +58,8 @@ export interface LiveState {
   index: number;
   total: number;
   queue: LiveQueueItem[];
+  /** 재생 상태 (아직 발신 측이 알려주지 않으면 없음 → 오버레이는 상태 표시를 생략) */
+  playback?: "playing" | "paused" | "waiting";
   /** 발신 시각 (ms) — 같은 발신자 안에서 항상 증가한다 (중복/순서 판단용) */
   ts: number;
 }

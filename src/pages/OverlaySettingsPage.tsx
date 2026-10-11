@@ -23,8 +23,12 @@ import {
   type LiveStateInput,
 } from "../utils/liveBroadcast";
 import {
+  BOX_H_RANGE,
+  BOX_W_RANGE,
   DEFAULT_OVERLAY_SETTINGS,
   OFFSET_X_MAX,
+  OVERLAY_LAYOUTS,
+  bannerSize,
   PROFILE_NAME_MAX,
   RECOMMENDED_PROFILES,
   buildOverlayExport,
@@ -37,6 +41,7 @@ import {
   presetDefaults,
   serializeOverlaySettings,
   type OverlayBackground,
+  type OverlayLayout,
   type OverlayLyricsMode,
   type OverlaySettings,
 } from "../types/overlay";
@@ -58,7 +63,7 @@ const SAMPLE_STATE: LiveState = {
   v: 1,
   bookId: "sample",
   mode: "concert",
-  song: { id: "s3", title: "샘플 곡 제목", artist: "샘플 가수", key: "Bb", bpm: 87, difficulty: 3 },
+  song: { id: "s3", title: "샘플 곡 제목", artist: "샘플 가수", key: "Bb", bpm: 87, difficulty: 3, requester: "샘플시청자" },
   lines: ["첫 번째 가사가 여기에 표시돼요", "지금 부르는 가사가 가장 크게 보여요", "다음 가사는 조금 작게 보여요", "그 다음 가사"],
   lineIndex: 1,
   synced: true,
@@ -66,7 +71,7 @@ const SAMPLE_STATE: LiveState = {
   total: 8,
   queue: [
     { id: "s3", title: "샘플 곡 제목", artist: "샘플 가수" },
-    { id: "s4", title: "다음 곡 하나", artist: "가수" },
+    { id: "s4", title: "다음 곡 하나", artist: "가수", requester: "다음신청자" },
     { id: "s5", title: "그다음 곡", artist: "가수" },
     { id: "s6", title: "마지막에 가까운 곡", artist: "가수" },
   ],
@@ -819,8 +824,10 @@ export function OverlaySettingsPage() {
           <div
             ref={previewRef}
             data-testid="overlay-preview"
-            className="relative w-full aspect-video rounded-xl overflow-hidden border"
+            className="relative w-full rounded-xl overflow-hidden border"
             style={{
+              // 배너형은 OBS 소스 크기(기본 1000×180 등)와 같은 비율로 보여준다. 나머지 디자인은 기존처럼 16:9
+              aspectRatio: settings.preset === "banner" ? `${bannerSize(settings).w} / ${bannerSize(settings).h}` : "16 / 9",
               borderColor: "var(--book-chrome-border, rgba(255,255,255,0.12))",
               backgroundColor: "#3a3d4a",
               backgroundImage:
@@ -858,12 +865,104 @@ export function OverlaySettingsPage() {
             <p className="text-[12.5px] mt-2" style={muted} data-testid="preset-desc">
               {OVERLAY_PRESETS.find((p) => p.value === settings.preset)?.desc}
             </p>
+            <button
+              type="button"
+              data-testid="overlay-reset"
+              className="mt-2 text-[12.5px] px-3 min-h-[36px] rounded-lg border"
+              style={chipStyle}
+              onClick={async () => {
+                if (!(await confirmAsync({ title: "설정을 초기화할까요?", message: "선택한 디자인은 유지하고, 나머지 설정을 기본값으로 되돌려요.", confirmLabel: "초기화" }))) return;
+                setSettings({ ...DEFAULT_OVERLAY_SETTINGS, preset: settings.preset, ...presetDefaults(settings.preset), useBookAccent: settings.useBookAccent });
+              }}
+            >
+              설정 초기화
+            </button>
           </section>
 
           <section aria-labelledby="step2" className="flex flex-col gap-5">
             <div id="step2">
               <StepTitle n="2">표시할 정보 고르기</StepTitle>
             </div>
+            {settings.preset === "banner" && (
+              <div className="rounded-xl border px-4 py-4 flex flex-col gap-4" style={chipStyle} data-testid="banner-settings">
+                <Group legend="배너 크기">
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="배너 크기">
+                    {OVERLAY_LAYOUTS.map((l) => (
+                      <Radio
+                        key={l.value}
+                        name="layout"
+                        value={l.value}
+                        current={settings.layout}
+                        label={l.label}
+                        hint={l.value === "custom" ? `${settings.boxW}×${settings.boxH}` : `${l.w}×${l.h}`}
+                        onChange={(v: OverlayLayout) =>
+                          setSettings((st) => (v === "custom" ? { ...st, layout: v } : { ...st, layout: v, boxW: l.w, boxH: l.h }))
+                        }
+                      />
+                    ))}
+                  </div>
+                  {settings.layout === "custom" && (
+                    <div className="grid grid-cols-2 gap-2 mt-2">
+                      <label className="text-[12px]" style={muted}>
+                        가로 px ({BOX_W_RANGE[0]}~{BOX_W_RANGE[1]})
+                        <input
+                          type="number"
+                          data-testid="banner-w"
+                          min={BOX_W_RANGE[0]}
+                          max={BOX_W_RANGE[1]}
+                          value={settings.boxW}
+                          onChange={(e) => update("boxW", Math.min(BOX_W_RANGE[1], Math.max(BOX_W_RANGE[0], Math.round(Number(e.target.value)) || BOX_W_RANGE[0])))}
+                          className="book-input w-full mt-1 rounded-lg border px-3 py-2 text-[13px] outline-none"
+                          style={{ ...chipStyle, color: "var(--book-text, #fff)" }}
+                        />
+                      </label>
+                      <label className="text-[12px]" style={muted}>
+                        세로 px ({BOX_H_RANGE[0]}~{BOX_H_RANGE[1]})
+                        <input
+                          type="number"
+                          data-testid="banner-h"
+                          min={BOX_H_RANGE[0]}
+                          max={BOX_H_RANGE[1]}
+                          value={settings.boxH}
+                          onChange={(e) => update("boxH", Math.min(BOX_H_RANGE[1], Math.max(BOX_H_RANGE[0], Math.round(Number(e.target.value)) || BOX_H_RANGE[0])))}
+                          className="book-input w-full mt-1 rounded-lg border px-3 py-2 text-[13px] outline-none"
+                          style={{ ...chipStyle, color: "var(--book-text, #fff)" }}
+                        />
+                      </label>
+                    </div>
+                  )}
+                  <p className="text-[11.5px] mt-2" style={muted} data-testid="banner-obs-guide">
+                    OBS 브라우저 소스의 <b>너비·높이</b>를 {bannerSize(settings).w}×{bannerSize(settings).h}로 맞추면 미리보기와 똑같이 나와요.
+                    화면에서의 위치는 <b>OBS에서 소스를 끌어 옮기세요</b> (OBS 위치와 이 앱의 &quot;위치·정렬&quot;은 별개예요).
+                    소스가 배너보다 크면 이 앱의 &quot;위치·정렬&quot;로 소스 안에서 배너 위치를 고를 수 있고, 작으면 배너가 자동으로 줄어들어요.
+                  </p>
+                </Group>
+                <Group legend="배너에 보여줄 것">
+                  <div className="grid grid-cols-2 gap-2">
+                    <Toggle label="현재 곡" checked={settings.showCurrent} onChange={(v) => update("showCurrent", v)} />
+                    <Toggle label="다음 곡" checked={settings.showNext} onChange={(v) => update("showNext", v)} />
+                    <Toggle label="신청자" checked={settings.showRequester} onChange={(v) => update("showRequester", v)} />
+                    <Toggle label="가사 (위 표시 정보와 같음)" checked={settings.showLyrics} onChange={(v) => update("showLyrics", v)} />
+                  </div>
+                  <p className="text-[11.5px] mt-1.5" style={muted}>신청자는 신청곡일 때만 나와요. 일반 재생 곡은 신청자 칸 없이 그대로 보여요.</p>
+                </Group>
+                <div>
+                  <label htmlFor="banner-gap" className="flex justify-between text-[12px] font-medium mb-1" style={muted}>
+                    <span>요소 간격</span>
+                    <span>{(settings.gap / 10).toFixed(1)}em</span>
+                  </label>
+                  <input id="banner-gap" type="range" min={0} max={30} step={1} value={settings.gap} onChange={(e) => update("gap", Number(e.target.value))} className="w-full accent-[var(--book-accent,#fbbf24)] h-8" />
+                </div>
+                <div>
+                  <label htmlFor="banner-lyh" className="flex justify-between text-[12px] font-medium mb-1" style={muted}>
+                    <span>가사 영역 높이 (배너 높이 대비)</span>
+                    <span>{settings.lyricsH}%</span>
+                  </label>
+                  <input id="banner-lyh" type="range" min={20} max={100} step={5} value={settings.lyricsH} onChange={(e) => update("lyricsH", Number(e.target.value))} className="w-full accent-[var(--book-accent,#fbbf24)] h-8" />
+                </div>
+              </div>
+            )}
+
             <Group legend="표시 정보">
               <div className="grid grid-cols-2 gap-2">
                 <Toggle label="곡 제목" checked={settings.showTitle} onChange={(v) => update("showTitle", v)} />

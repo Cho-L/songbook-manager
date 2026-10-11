@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Music2 } from "lucide-react";
 import type { LiveState } from "../../utils/liveBroadcast";
+import { bannerSize } from "../../types/overlay";
 import type { OverlayAlign, OverlayPosition, OverlayPreset, OverlaySettings } from "../../types/overlay";
 
 /**
@@ -426,7 +427,167 @@ const NATIVE: Record<OverlayPreset, { pos: Exclude<OverlayPosition, "auto">; ali
   covercard: { pos: "bl", align: "center", width: "16em" },
   queue: { pos: "tr", align: "left", width: "22em" },
   vertical: { pos: "c", align: "center", width: "34em" },
+  banner: { pos: "bc", align: "left", width: "fit" },
 };
+
+
+// ---------------------------------------------------------------- 가로 배너형
+
+/**
+ * 한 줄짜리 글자가 칸보다 길면 글자 크기를 줄여서(최소 55%) 맞추고, 그래도 넘치면 … 으로 줄인다.
+ * 측정/조정은 DOM에서 직접 하므로 React 리렌더를 만들지 않는다 (OBS에서 불필요한 렌더 방지).
+ */
+function FitText({ text, base, style, testId }: { text: string; base: number; style?: React.CSSProperties; testId?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => {
+      el.style.fontSize = `${base}em`;
+      if (el.clientWidth > 0 && el.scrollWidth > el.clientWidth) {
+        const k = Math.max(0.55, (el.clientWidth / el.scrollWidth) * 0.97);
+        el.style.fontSize = `${base * k}em`;
+      }
+    };
+    fit();
+    // 웹폰트가 늦게 로드돼 글자 폭이 바뀌는 경우까지 다시 맞춘다
+    void document.fonts?.ready.then(fit);
+  });
+  return (
+    <div
+      ref={ref}
+      data-testid={testId}
+      title={text}
+      style={{ fontSize: `${base}em`, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, maxWidth: "100%", ...style }}
+    >
+      {text}
+    </div>
+  );
+}
+
+const REQUESTER_MAX = 30;
+function requesterLabel(name: string | undefined): string {
+  return typeof name === "string" ? name.trim().slice(0, REQUESTER_MAX) : "";
+}
+
+const PLAYBACK_LABEL = { playing: "▶ 재생 중", paused: "⏸ 일시정지", waiting: "⏳ 대기" } as const;
+
+function Banner({
+  state,
+  settings,
+  pal,
+  width,
+  height,
+  pos,
+  align,
+}: {
+  state: LiveState;
+  settings: OverlaySettings;
+  pal: Palette;
+  width: number;
+  height: number;
+  pos: Exclude<OverlayPosition, "auto">;
+  align: Exclude<OverlayAlign, "auto">;
+}) {
+  const song = state.song!;
+  const bs = bannerSize(settings);
+  const vw = Math.max(1, width);
+  const vh = height > 0 ? height : (vw * 9) / 16;
+  // OBS 소스가 배너보다 작으면 통째로 줄여서 맞춘다 (잘리거나 스크롤이 생기지 않게). 크면 1:1.
+  const k = Math.min(1, vw / bs.w, vh / bs.h);
+  const pxW = bs.w * k;
+  const pxH = bs.h * k;
+  const freeX = Math.max(0, vw - pxW);
+  const freeY = Math.max(0, vh - pxH);
+  const h = HORIZONTAL[pos];
+  const v = VERTICAL[pos];
+  const baseX = h === "l" ? 0 : h === "c" ? freeX / 2 : freeX;
+  const baseY = v === "t" ? 0 : v === "m" ? freeY / 2 : freeY;
+  const left = Math.min(freeX, Math.max(0, baseX + (settings.offsetX / 100) * vw));
+  const top = Math.min(freeY, Math.max(0, baseY + (settings.offsetY / 100) * vh));
+
+  const font = bs.h * 0.105 * (settings.size / 100); // 배너 높이에 비례 (180px → 약 19px)
+  const gapEm = settings.gap / 10;
+  const alignItems = flexAlign(align);
+  const idx = state.queue.findIndex((q) => q.id === song.id);
+  const curItem = idx >= 0 ? state.queue[idx] : undefined;
+  const nextItem = idx >= 0 ? state.queue[idx + 1] : undefined;
+  const requester = requesterLabel(song.requester ?? curItem?.requester);
+  const nextRequester = requesterLabel(nextItem?.requester);
+  const showLyrics = settings.showLyrics && state.synced && state.lines.length > 0;
+  const showNext = settings.showNext && Boolean(nextItem);
+  const panel = panelStyle(settings);
+  const coverEm = (bs.h * 0.62) / font;
+  const colStyle: React.CSSProperties = { display: "flex", flexDirection: "column", justifyContent: "center", alignItems, textAlign: align, minWidth: 0, gap: "0.15em", height: "100%" };
+  const label = (t: string, color = pal.accent): React.ReactNode => (
+    <div style={{ fontSize: "0.62em", letterSpacing: "0.14em", fontWeight: 700, color, whiteSpace: "nowrap" }}>{t}</div>
+  );
+  const reqLine = (name: string, tid: string) =>
+    settings.showRequester && name ? (
+      <FitText text={`🙋 ${name}`} base={0.8} testId={tid} style={{ color: pal.accent, fontWeight: 600 }} />
+    ) : null;
+
+  const inner = (
+    <div
+      data-testid="overlay-banner"
+      style={{
+        width: bs.w,
+        height: bs.h,
+        boxSizing: "border-box",
+        transform: `scale(${k})`,
+        transformOrigin: "0 0",
+        fontSize: `${font}px`,
+        display: "flex",
+        alignItems: "center",
+        gap: `${gapEm}em`,
+        overflow: "hidden",
+        ...panel,
+        padding: `${Math.max(0.3, gapEm * 0.6)}em ${Math.max(0.6, gapEm)}em`,
+      }}
+    >
+      {settings.showCover && <Cover videoId={song.youtubeVideoId} settings={settings} size={`${coverEm}em`} key={song.youtubeVideoId ?? "none"} />}
+      {settings.showCurrent && (
+        <div data-testid="overlay-current-song" style={{ ...colStyle, flex: "1.3 1 0" }}>
+          <div style={{ display: "flex", gap: "0.6em", alignItems: "baseline", justifyContent: alignItems, whiteSpace: "nowrap" }}>
+            {label("NOW")}
+            {state.playback && (
+              <span data-testid="overlay-playback" style={{ fontSize: "0.62em", color: pal.sub }}>
+                {PLAYBACK_LABEL[state.playback] ?? ""}
+              </span>
+            )}
+            {settings.showProgress && state.total > 0 && (
+              <span data-testid="overlay-progress" style={{ fontSize: "0.62em", color: pal.sub }}>
+                {progressText(state)}
+              </span>
+            )}
+          </div>
+          {settings.showTitle && <FitText text={song.title} base={1.5} testId="overlay-title" style={{ fontWeight: settings.fontWeight, width: "100%" }} />}
+          {settings.showArtist && song.artist && <FitText text={song.artist} base={0.95} testId="overlay-artist" style={{ color: pal.sub, width: "100%" }} />}
+          {reqLine(requester, "overlay-requester")}
+        </div>
+      )}
+      {showLyrics && (
+        <div
+          data-testid="overlay-lyrics-area"
+          style={{ ...colStyle, flex: "1.6 1 0", height: `${settings.lyricsH}%`, overflow: "hidden", justifyContent: "center" }}
+        >
+          <Lyrics state={state} settings={settings} pal={pal} currentSize="1.25em" align={align} />
+        </div>
+      )}
+      {showNext && nextItem && (
+        <div data-testid="overlay-next-song" style={{ ...colStyle, flex: "1 1 0" }}>
+          {label("NEXT", pal.sub)}
+          <FitText text={nextItem.title} base={1.05} testId="overlay-next-title" style={{ fontWeight: 600, width: "100%" }} />
+          {nextItem.artist && <FitText text={nextItem.artist} base={0.8} testId="overlay-next-artist" style={{ color: pal.sub, width: "100%" }} />}
+          {reqLine(nextRequester, "overlay-next-requester")}
+        </div>
+      )}
+    </div>
+  );
+  return (
+    <div style={{ position: "absolute", left, top, width: pxW, height: pxH, overflow: "hidden" }}>{inner}</div>
+  );
+}
 
 // ---------------------------------------------------------------- 본체
 
@@ -589,6 +750,9 @@ export function OverlayView({ state, status, settings, width, height = 0, minPx 
 
   let body: React.ReactNode;
   switch (settings.preset) {
+    case "banner":
+      body = <Banner state={state2} settings={settings} pal={pal} width={width} height={height} pos={pos} align={align} />;
+      break;
     case "mini": {
       const text = [settings.showTitle ? song.title : "", settings.showArtist ? song.artist : ""].filter(Boolean).join(" · ");
       const p = settings.showProgress ? progressText(state2) : "";
@@ -764,7 +928,7 @@ export function OverlayView({ state, status, settings, width, height = 0, minPx 
   }
 
   const queue =
-    settings.showQueue && settings.preset !== "mini" && settings.preset !== "queue" ? (
+    settings.showQueue && settings.preset !== "mini" && settings.preset !== "queue" && settings.preset !== "banner" ? (
       <QueuePanel state={state2} settings={settings} pal={pal} />
     ) : null;
 

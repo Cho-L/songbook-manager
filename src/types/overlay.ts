@@ -16,7 +16,10 @@ export type OverlayPreset =
   | "lowerthird"
   | "covercard"
   | "queue"
-  | "vertical";
+  | "vertical"
+  | "banner";
+/** 배너형 크기 묶음: 기본형 1000×180 / 와이드형 1200×160 / 초와이드형 1600×140 / 사용자 지정(boxW×boxH) */
+export type OverlayLayout = "basic" | "wide" | "ultra" | "custom";
 export type OverlayLyricsMode = "current" | "next" | "prevnext";
 export type OverlayBackground = "transparent" | "translucent" | "card" | "solid";
 export type OverlayIdle = "waiting" | "start" | "custom" | "hidden";
@@ -78,6 +81,18 @@ export interface OverlaySettings {
   animStyle: OverlayAnimStyle;
   progressStyle: OverlayProgressStyle;
   queueMode: OverlayQueueMode;
+  // ---- 배너형(banner) 전용. 다른 디자인에서는 쓰이지 않아서 예전 URL/설정은 모습이 그대로다 ----
+  layout: OverlayLayout;
+  /** 사용자 지정 크기 px (layout=custom 일 때만 쓰임) */
+  boxW: number;
+  boxH: number;
+  /** 요소 사이 간격, 0.1em 단위 (0~30) */
+  gap: number;
+  /** 가사 영역 높이, 배너 높이의 % (20~100) */
+  lyricsH: number;
+  showCurrent: boolean;
+  showNext: boolean;
+  showRequester: boolean;
 }
 
 export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
@@ -119,7 +134,31 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   animStyle: "slide",
   progressStyle: "text",
   queueMode: "next3",
+  layout: "basic",
+  boxW: 1000,
+  boxH: 180,
+  gap: 8,
+  lyricsH: 60,
+  showCurrent: true,
+  showNext: true,
+  showRequester: true,
 };
+
+export const OVERLAY_LAYOUTS: { value: OverlayLayout; label: string; w: number; h: number }[] = [
+  { value: "basic", label: "기본형", w: 1000, h: 180 },
+  { value: "wide", label: "와이드형", w: 1200, h: 160 },
+  { value: "ultra", label: "초와이드형", w: 1600, h: 140 },
+  { value: "custom", label: "사용자 지정", w: 1000, h: 180 },
+];
+export const BOX_W_RANGE = [320, 3840] as const;
+export const BOX_H_RANGE = [60, 1080] as const;
+
+/** 배너형이 차지할 크기(px). 사용자 지정이 아니면 묶음 값, 사용자 지정이면 boxW×boxH */
+export function bannerSize(s: Pick<OverlaySettings, "layout" | "boxW" | "boxH">): { w: number; h: number } {
+  if (s.layout === "custom") return { w: s.boxW, h: s.boxH };
+  const l = OVERLAY_LAYOUTS.find((x) => x.value === s.layout) ?? OVERLAY_LAYOUTS[0];
+  return { w: l.w, h: l.h };
+}
 
 export const OVERLAY_PRESETS: { value: OverlayPreset; label: string; hint: string; desc: string }[] = [
   { value: "minimal", label: "Minimal", hint: "제목·가수·가사만 단순하게", desc: "제목과 가수, 가사를 화면 구석에 단순하게 보여줍니다." },
@@ -132,6 +171,7 @@ export const OVERLAY_PRESETS: { value: OverlayPreset; label: string; hint: strin
   { value: "vertical", label: "Vertical", hint: "세로 화면(9:16)용", desc: "세로 방송 화면(9:16)에 맞게 커버, 제목, 가사를 세로로 쌓아 보여줍니다." },
   { value: "card", label: "Card", hint: "커버와 함께 가로 카드", desc: "커버와 함께 가로 카드 형태로 보여줍니다." },
   { value: "subtitle", label: "Subtitle", hint: "화면 아래 자막처럼", desc: "화면 아래에 자막처럼 가사를 보여줍니다." },
+  { value: "banner", label: "Banner (가로 배너)", hint: "현재 곡 + 가사 + 다음 곡을 한 줄 배너로", desc: "가로로 긴 배너에 지금 곡, 신청자, 가사, 다음 곡을 나란히 보여줍니다. OBS 브라우저 소스 크기를 1000×180 같은 가로 배너 크기로 맞추세요." },
   { value: "mini", label: "Mini", hint: "구석에 '제목 · 가수'만 한 줄", desc: "화면 구석에 제목 · 가수만 한 줄로 작게 보여줍니다." },
 ];
 
@@ -161,6 +201,7 @@ const COVERS: OverlayCoverStyle[] = ["square", "rounded", "circle", "hidden"];
 const ANIMS: OverlayAnimStyle[] = ["slide", "fade"];
 const PROGRESS: OverlayProgressStyle[] = ["text", "thin", "thick", "dot"];
 const QUEUES: OverlayQueueMode[] = ["current", "next", "next3"];
+const LAYOUTS: OverlayLayout[] = ["basic", "wide", "ultra", "custom"];
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -238,6 +279,14 @@ export function parseOverlaySettings(params: URLSearchParams): OverlaySettings {
     animStyle: pick(params.get("as"), ANIMS, d.animStyle),
     progressStyle: pick(params.get("ps"), PROGRESS, d.progressStyle),
     queueMode: pick(params.get("qm"), QUEUES, d.queueMode),
+    layout: pick(params.get("ly"), LAYOUTS, d.layout),
+    boxW: num(params.get("bw"), d.boxW, BOX_W_RANGE[0], BOX_W_RANGE[1]),
+    boxH: num(params.get("bh"), d.boxH, BOX_H_RANGE[0], BOX_H_RANGE[1]),
+    gap: num(params.get("gp"), d.gap, 0, 30),
+    lyricsH: num(params.get("lyh"), d.lyricsH, 20, 100),
+    showCurrent: bool(params.get("cur"), d.showCurrent),
+    showNext: bool(params.get("nxt"), d.showNext),
+    showRequester: bool(params.get("req"), d.showRequester),
   };
 }
 
@@ -287,6 +336,14 @@ export function serializeOverlaySettings(s: OverlaySettings, bookId?: string, li
   q.set("as", s.animStyle);
   q.set("ps", s.progressStyle);
   q.set("qm", s.queueMode);
+  q.set("ly", s.layout);
+  q.set("bw", String(s.boxW));
+  q.set("bh", String(s.boxH));
+  q.set("gp", String(s.gap));
+  q.set("lyh", String(s.lyricsH));
+  q.set("cur", b(s.showCurrent));
+  q.set("nxt", b(s.showNext));
+  q.set("req", b(s.showRequester));
   return q.toString();
 }
 
@@ -315,6 +372,8 @@ export function presetDefaults(preset: OverlayPreset): Partial<OverlaySettings> 
       return { showTitle: true, showArtist: true, showLyrics: false, background: "translucent" };
     case "vertical":
       return { showTitle: true, showArtist: true, showCover: true, showLyrics: true, lyricsMode: "next", background: "transparent", lyricAccent: true, showProgress: true };
+    case "banner":
+      return { showTitle: true, showArtist: true, showCover: true, showLyrics: true, lyricsMode: "current", background: "translucent", lyricAccent: true, showCurrent: true, showNext: true, showRequester: true, align: "left" };
   }
 }
 
