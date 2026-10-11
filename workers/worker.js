@@ -1,20 +1,28 @@
 /**
  * Cloudflare Worker 진입점.
  *
- * 역할 두 가지뿐이다:
+ * 역할:
  * 1. /api/youtube-search 요청 → YouTube Data API를 서버 사이드에서 호출해 JSON으로 응답
  *    (netlify/functions/youtube-search.js와 완전히 동일한 로직 — 플랫폼만 다름)
- * 2. 그 외 모든 요청 → Vite가 빌드한 정적 파일(dist/)을 그대로 서빙 (SPA)
+ * 2. /api/song-requests 요청 → 시청자 신청곡 접수/조회 (src/server/songRequestHandler.ts)
+ * 3. 그 외 모든 요청 → Vite가 빌드한 정적 파일(dist/)을 그대로 서빙 (SPA)
  *
  * YOUTUBE_API_KEY는 Cloudflare 대시보드(또는 wrangler secret)로 설정한 환경변수이며,
  * 이 파일 안에서만 서버 사이드로 쓰이고 브라우저에는 절대 노출되지 않는다.
  */
+import { handleSongRequests } from "../src/server/songRequestHandler";
+
 export default {
   async fetch(request, env, _ctx) {
     const url = new URL(request.url);
 
     if (url.pathname === "/api/youtube-search") {
       return handleYoutubeSearch(url, env);
+    }
+
+    // 시청자 신청곡 접수/조회 (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 는 Worker 비밀 환경변수 — docs/song-requests-deploy.md)
+    if (url.pathname === "/api/song-requests") {
+      return handleSongRequests(request, env);
     }
 
     // SPA: 나머지는 정적 자산으로 서빙. 없는 경로(react-router 하위 경로 등)는

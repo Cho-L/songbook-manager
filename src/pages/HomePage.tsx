@@ -15,7 +15,7 @@ import {
   StarOff,
   ListPlus,
   Palette,
-  Info, Radio, Video } from "lucide-react";
+  Info, Radio, Send, Video } from "lucide-react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { SortOption } from "../types/song";
 
@@ -450,6 +450,15 @@ export function HomePage({
               title="OBS에 띄울 방송 화면(오버레이)을 만들고 연결해요"
             >
               <Radio className="h-3.5 w-3.5" /> 방송 오버레이
+            </button>
+          )}
+          {isOwner && (
+            <button
+              onClick={() => navigate(`/books/${ownerId}/requests`)}
+              className={NAV_LINK}
+              title="시청자가 보낸 신청곡을 승인하고 대기열을 관리해요"
+            >
+              <Send className="h-3.5 w-3.5" /> 신청곡 대기열
             </button>
           )}
           <button

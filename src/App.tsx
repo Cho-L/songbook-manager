@@ -15,6 +15,8 @@ import { BookDesignPage } from "./pages/BookDesignPage";
 import { OverlayPage } from "./pages/OverlayPage";
 import { FeedbackHost } from "./components/ui/feedback";
 import { OverlaySettingsPage } from "./pages/OverlaySettingsPage";
+import { SongRequestPage } from "./pages/SongRequestPage";
+import { RequestQueuePage } from "./pages/RequestQueuePage";
 import { RequireOwner } from "./components/RequireOwner";
 
 /**
@@ -75,6 +77,15 @@ function BookRoutes() {
       <Route
         path="/songs/:id/sing"
         element={<SongModePage songs={songs} loading={loading} />}
+      />
+      <Route path="/request" element={<SongRequestPage songs={songs} loading={loading} />} />
+      <Route
+        path="/requests"
+        element={
+          <RequireOwner>
+            <RequestQueuePage />
+          </RequireOwner>
+        }
       />
       <Route path="/playlists" element={<PlaylistsPage />} />
       <Route path="/playlists/:playlistId" element={<PlaylistDetailPage />} />

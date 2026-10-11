@@ -510,7 +510,7 @@ export function buildLiveLyrics(
   return { lines, lineIndex };
 }
 
-export function toLiveSong(song: Song): LiveSong {
+export function toLiveSong(song: Song, requester?: string): LiveSong {
   return {
     id: song.id,
     title: song.title,
@@ -519,6 +519,7 @@ export function toLiveSong(song: Song): LiveSong {
     bpm: song.bpm || undefined,
     difficulty: song.difficulty || undefined,
     youtubeVideoId: song.youtubeVideoId || undefined,
+    requester: requester && requester.trim() ? requester.trim().slice(0, 30) : undefined,
   };
 }
 

@@ -31,6 +31,7 @@ import { getChromeTones } from "../utils/color";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
+import { useRequesterName } from "../hooks/useRequesterName";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
@@ -62,6 +63,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const playlistId = searchParams.get("playlist") ?? undefined;
+  const requestId = searchParams.get("request");
   const rawSong = songs.find((s) => s.id === id);
   // 저장된 싱크 가사가 없으면 가사를 자동으로 찾아 싱크한 결과를 "song"으로 쓴다 (저장된 데이터는 바뀌지 않고, 이후 흐름은 기존 LRC 경로 그대로)
   const auto = useAutoLyrics(rawSong);
@@ -128,6 +130,8 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   );
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
 
+  const requesterName = useRequesterName(requestId, song?.id);
+
   // 방송 오버레이로 현재 상태 내보내기 (곡/가사 줄이 바뀔 때만 전송, 화면을 벗어나면 자동으로 지움)
   const liveState = useMemo<LiveStateInput | null>(() => {
     if (!song || !ownerId) return null;
@@ -137,7 +141,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     return {
       bookId: ownerId,
       mode: "song",
-      song: toLiveSong(song),
+      song: toLiveSong(song, requesterName),
       lines,
       lineIndex,
       synced: isSynced,
@@ -145,7 +149,7 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
       total: inPlaylist ? playlistSongIds.length : 0,
       queue: inPlaylist ? buildLiveQueue(playlistSongIds, songs) : [],
     };
-  }, [song, ownerId, playlistId, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex]);
+  }, [song, ownerId, playlistId, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, requesterName]);
   useLivePublisher(liveState);
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
