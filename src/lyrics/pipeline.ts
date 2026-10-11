@@ -1,10 +1,10 @@
-import { MEDIUM_CONFIDENCE, isAutoAccept, rankCandidates, summarize } from "./matching";
+import { MEDIUM_CONFIDENCE, isAutoAccept, isCrossScriptTitleChoice, rankCandidates, summarize } from "./matching";
 import { searchCandidates } from "./searchPlan";
 import { formatLrc } from "./lrc";
 import { hashText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
 import { applyWarp } from "./warp";
-import { IDENTITY_WARP, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
+import { IDENTITY_WARP, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
 
 /**
  * 자동 가사 검색 + 싱크 파이프라인 (화면/저장소와 무관한 순수 로직).
@@ -27,6 +27,8 @@ export interface ResolveOptions {
   /** 사용자가 후보 목록에서 직접 고른 곡 — 신뢰도 기준을 건너뛴다 */
   candidateId?: string;
   synchronizer?: LyricsSynchronizer;
+  /** 한글 곡이 가사 DB 에 영문 표기로만 있을 때 확인된 별칭을 찾아 주는 곳 (없으면 확장 검색의 별칭 단계는 건너뛴다) */
+  aliasProvider?: AliasProvider;
   now?: () => number;
   signal?: AbortSignal;
 }
@@ -47,8 +49,8 @@ export async function resolveLyrics(input: ResolveInput, provider: LyricsProvide
   const base = { v: 1 as const, songId: input.songId, ...entryKeys(input), createdAt: now(), lines: [], warps: {}, warnings: [] as string[] };
 
   // 단계적 검색(엄격 → 느슨, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
-  const { candidates } = await searchCandidates(provider, input, opts.signal);
-  const ranked = rankCandidates(input, candidates);
+  const { candidates, aliases } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
+  const ranked = rankCandidates(input, candidates, aliases);
   if (ranked.length === 0) return { ...base, outcome: "not-found" };
 
   const hasArtist = Boolean(input.artist.trim());
@@ -59,10 +61,19 @@ export async function resolveLyrics(input: ResolveInput, provider: LyricsProvide
     const top = ranked[0];
     if (!isAutoAccept(top, hasArtist)) {
       const medium = ranked.filter((c) => c.confidence >= MEDIUM_CONFIDENCE);
-      if (medium.length === 0) {
+      // 가수는 확실히 같은데 제목만 한글↔영문이라 비교가 안 되는 후보(꽃길 ↔ Flower Way)는 자동으로 고르지 않고 목록으로만 보여 준다
+      const crossScript = hasArtist ? ranked.filter((c) => !medium.includes(c) && isCrossScriptTitleChoice(input, c)) : [];
+      if (medium.length === 0 && crossScript.length === 0) {
         return { ...base, outcome: "not-found", confidence: top.confidence, warnings: ["비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
       }
-      return { ...base, outcome: "needs-choice", options: medium.slice(0, 5).map(summarize), confidence: medium[0].confidence };
+      const options = [...medium.slice(0, 5), ...crossScript.slice(0, 5)];
+      return {
+        ...base,
+        outcome: "needs-choice",
+        options: options.map(summarize),
+        confidence: options[0].confidence,
+        warnings: crossScript.length > 0 ? ["제목 표기가 달라서(한글↔영문) 자동으로 고르지 못했어요. 맞는 곡을 골라 주세요"] : [],
+      };
     }
     // 점수가 거의 같으면(5% 이내) 싱크 가사가 있는 후보를 우선 (자동 선택 조건을 만족하는 것 중에서)
     chosen = ranked.find((c) => c.syncedLyrics && isAutoAccept(c, hasArtist) && top.confidence - c.confidence <= 0.05) ?? top;

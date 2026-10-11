@@ -1,6 +1,7 @@
-import type { CandidateSummary, LyricsCandidate, ScoredCandidate, SyncedLyricLine } from "./types";
+import type { CandidateSummary, LyricsCandidate, ScoredCandidate, SyncedLyricLine, TitleArtistAliases } from "./types";
 import { matchArtists } from "./artist";
 import { hasVersionWord, normalizeText, similarity, titleSimilarityScore } from "./text";
+import { hasHangul, hasLatin } from "./phonetic";
 
 // ---------------------------------------------------------------- 후보 점수
 
@@ -12,10 +13,18 @@ export const MEDIUM_CONFIDENCE = 0.5;
 export const AUTO_ACCEPT_MIN_ARTIST = 0.55;
 export const AUTO_ACCEPT_MIN_TITLE = 0.6;
 
-export function scoreCandidate(song: { title: string; artist: string }, c: LyricsCandidate): ScoredCandidate {
-  const titleSimilarity = titleSimilarityScore(song.title, c.title);
+export function scoreCandidate(song: { title: string; artist: string }, c: LyricsCandidate, aliases?: TitleArtistAliases): ScoredCandidate {
+  let titleSimilarity = titleSimilarityScore(song.title, c.title);
   // 가수는 목록으로 나눠 순서/구분자/한글·영문 표기 차이를 흡수해서 비교한다. 가수 정보가 없는 곡은 중립(0.5)
-  const artistSimilarity = song.artist.trim() ? matchArtists(song.artist, c.artist).score : 0.5;
+  let artistSimilarity = song.artist.trim() ? matchArtists(song.artist, c.artist).score : 0.5;
+  // 외부 메타데이터(MusicBrainz)가 알려 준 다른 언어 표기(꽃길 ↔ Flower Way, 김세정 ↔ Kim Sejeong)도 같은 기준으로 비교한다.
+  // 별칭 제목은 "그 가수의 같은 곡"으로 확인된 표기일 때만 들어오므로, 후보의 가수까지 맞아야 인정한다.
+  if (aliases && song.artist.trim()) {
+    for (const a of aliases.artists) artistSimilarity = Math.max(artistSimilarity, matchArtists(a, c.artist).score);
+    if (artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST) {
+      for (const t of aliases.titles) titleSimilarity = Math.max(titleSimilarity, titleSimilarityScore(t, c.title));
+    }
+  }
   // 저장된 곡 제목에는 없는 "Live/Remix/Cover" 같은 표시가 후보에만 있으면 다른 버전일 가능성이 크다
   const versionMismatch = hasVersionWord(c.title) && !hasVersionWord(song.title);
   const hasLyrics = Boolean(c.syncedLyrics || c.plainLyrics);
@@ -35,11 +44,22 @@ export function isAutoAccept(c: ScoredCandidate, songHasArtist: boolean): boolea
 }
 
 /** 쓸 수 없는 후보(연주곡, 가사 없음)를 빼고 신뢰도 순으로 정렬. 비슷한 점수에서는 싱크 가사가 있는 쪽을 앞에 둔다. */
-export function rankCandidates(song: { title: string; artist: string }, candidates: LyricsCandidate[]): ScoredCandidate[] {
+export function rankCandidates(song: { title: string; artist: string }, candidates: LyricsCandidate[], aliases?: TitleArtistAliases): ScoredCandidate[] {
   return candidates
     .filter((c) => !c.instrumental && (c.syncedLyrics || c.plainLyrics))
-    .map((c) => scoreCandidate(song, c))
+    .map((c) => scoreCandidate(song, c, aliases))
     .sort((a, b) => b.confidence - a.confidence || Number(Boolean(b.syncedLyrics)) - Number(Boolean(a.syncedLyrics)));
+}
+
+/**
+ * "제목은 서로 다른 문자 체계라 비교할 수 없지만(꽃길 ↔ Flower Way) 가수는 확실히 같은" 후보.
+ * 번역을 추측해서 자동 선택하지는 않고, 사용자가 후보 목록에서 직접 고르게 할 때만 쓴다.
+ */
+export function isCrossScriptTitleChoice(song: { title: string }, c: ScoredCandidate): boolean {
+  const a = song.title;
+  const b = c.title;
+  const crossScript = (hasHangul(a) && !hasLatin(a) && hasLatin(b) && !hasHangul(b)) || (hasHangul(b) && !hasLatin(b) && hasLatin(a) && !hasHangul(a));
+  return crossScript && c.artistSimilarity >= 0.9 && c.titleSimilarity < 0.5 && !c.versionMismatch;
 }
 
 export function summarize(c: ScoredCandidate): CandidateSummary {

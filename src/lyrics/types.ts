@@ -46,6 +46,23 @@ export interface ScoredCandidate extends LyricsCandidate {
 export interface LyricsProvider {
   readonly name: string;
   search(title: string, artist: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+  /** 자유 검색어(제목·가수·앨범 어디든 포함) 검색. 지원하는 provider 만 구현한다 */
+  searchQuery?(query: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+}
+
+/**
+ * 같은 곡/가수의 다른 언어 표기. 한글로 적은 곡이 가사 DB 에는 영문 표기로만 있을 때(예: 꽃길 ↔ Flower Way)
+ * 번역기로 만들어 낸 값이 아니라 외부 메타데이터(MusicBrainz 등)가 알려 준 표기만 담는다.
+ */
+export interface TitleArtistAliases {
+  artists: string[];
+  titles: string[];
+}
+
+export interface AliasProvider {
+  readonly name: string;
+  /** 실패하거나 확실한 정보가 없으면 빈 값을 돌려준다(검색 자체를 막지 않는다) */
+  lookup(title: string, artist: string, signal?: AbortSignal): Promise<TitleArtistAliases>;
 }
 
 // ---------------------------------------------------------------- 싱크 엔진 추상화

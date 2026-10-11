@@ -30,6 +30,17 @@ export class LrclibProvider implements LyricsProvider {
     const url = new URL("/api/search", this.baseUrl);
     url.searchParams.set("track_name", title);
     if (artist.trim()) url.searchParams.set("artist_name", artist);
+    return this.fetchCandidates(url, signal);
+  }
+
+  /** GET /api/search?q=… — 제목/가수/앨범 어디에 있든 찾는다. 제목이 한글/영문 중 어느 쪽으로 등록됐는지 모를 때의 보조 수단 */
+  async searchQuery(query: string, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+    const url = new URL("/api/search", this.baseUrl);
+    url.searchParams.set("q", query);
+    return this.fetchCandidates(url, signal);
+  }
+
+  private async fetchCandidates(url: URL, signal?: AbortSignal): Promise<LyricsCandidate[]> {
     const res = await this.fetchImpl(url.toString(), { signal });
     if (!res.ok) throw new Error(`LRCLIB ${res.status}`);
     const data: unknown = await res.json();

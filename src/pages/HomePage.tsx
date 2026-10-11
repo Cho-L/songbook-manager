@@ -15,8 +15,8 @@ import {
   StarOff,
   ListPlus,
   Palette,
-  Info, Radio } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+  Info, Radio, Video } from "lucide-react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import type { SortOption } from "../types/song";
 
 const SONG_SORT_OPTIONS: { value: SortOption; label: string }[] = [
@@ -30,6 +30,10 @@ import type { Profile } from "../types/user";
 import { Header } from "../components/layout/Header";
 import { SearchBar } from "../components/layout/SearchBar";
 import { SortSelect } from "../components/layout/SortSelect";
+import { ImportMrSection } from "../components/song/ImportMrSection";
+import { BookMrBatchDialog } from "../components/song/BookMrBatchDialog";
+import { hasEnoughInfoForMrSearch } from "../utils/mrSearch";
+import { parsePageParam, parseSortParam } from "../utils/listParams";
 import { SongListItem, SongListHeader } from "../components/song/SongListItem";
 import { EmptyState } from "../components/song/EmptyState";
 import { searchSongs } from "../utils/search";
@@ -107,16 +111,42 @@ export function HomePage({
   const { design } = useBookDesign(ownerId);
 
   const [bookOwner, setBookOwner] = useState<Profile | null>(null);
-  const [query, setQuery] = useState("");
-  const [favOnly, setFavOnly] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>("recent");
-  const [page, setPage] = useState(1);
+  // 검색어/정렬/즐겨찾기/페이지는 URL 쿼리(?q=&sort=&fav=1&page=)가 단일 출처다.
+  // 예전에는 컴포넌트 state라서, 곡 상세로 갔다가 뒤로 가기를 하면 HomePage가 새로 마운트되며 1페이지로 초기화됐다.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const favOnly = searchParams.get("fav") === "1";
+  const sortBy = parseSortParam(searchParams.get("sort"));
+  const page = parsePageParam(searchParams.get("page"));
   const [pageSize, setPageSize] = useState(30);
+
+  /** 쿼리 일부를 바꾼다. 검색/정렬/즐겨찾기가 바뀌면 page는 항상 1로 돌린다(파라미터 제거). 검색어 타이핑은 history를 쌓지 않도록 replace. */
+  function updateParams(changes: Record<string, string | null>, opts: { replace?: boolean } = {}) {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        for (const [k, v] of Object.entries(changes)) {
+          if (v === null || v === "") next.delete(k);
+          else next.set(k, v);
+        }
+        return next;
+      },
+      { replace: opts.replace ?? false }
+    );
+  }
+  const setQuery = (v: string) => updateParams({ q: v, page: null }, { replace: true });
+  const setFavOnly = (v: boolean) => updateParams({ fav: v ? "1" : null, page: null });
+  const setSortBy = (v: SortOption) => updateParams({ sort: v === "recent" ? null : v, page: null });
+  const goToPage = (n: number) => updateParams({ page: n <= 1 ? null : String(n) });
 
   const [importing, setImporting] = useState(false);
   const [importPreview, setImportPreview] = useState<FlexibleImportResult | null>(null);
   const [showImportHelp, setShowImportHelp] = useState(false);
   const [duplicatePolicy, setDuplicatePolicy] = useState<"skip" | "add">("skip");
+  // 가져오기 미리보기에서 MR 자동 검색으로 고른 영상 (행 번호 → videoId). 가져오기를 확인하기 전에는 저장되지 않는다.
+  const [mrChoices, setMrChoices] = useState<Record<number, string>>({});
+  const [importSeq, setImportSeq] = useState(0);
+  const [showMrBatch, setShowMrBatch] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [selectionMode, setSelectionMode] = useState(false);
@@ -142,8 +172,8 @@ export function HomePage({
     return sortSongs(searched, sortBy, favoriteIds);
   }, [songs, query, favOnly, sortBy, favoriteIds]);
 
+  // 검색/필터/정렬이 바뀌면 선택을 비운다 (페이지는 위 setter들이 URL에서 직접 1로 되돌린다)
   useEffect(() => {
-    setPage(1);
     setSelectedIds(new Set());
   }, [query, favOnly, sortBy]);
 
@@ -214,6 +244,8 @@ export function HomePage({
       const existing = toExistingSongSummaries(songs);
       const result = format === "csv" ? normalizeImportedCSV(text, existing) : normalizeImportedJSON(text, existing);
       setDuplicatePolicy("skip");
+      setMrChoices({});
+      setImportSeq((n) => n + 1);
       setImportPreview(result);
     } catch (err) {
       if (err instanceof BackupParseError) {
@@ -241,7 +273,9 @@ export function HomePage({
     let succeeded = 0;
     try {
       for (const row of toImport) {
-        await addSong(row.input);
+        // 파일에 이미 MR이 있는 곡은 절대 덮어쓰지 않는다 — 비어 있는 곡에만 사용자가 확인한 영상을 연결한다
+        const picked = row.input.youtubeVideoId ? undefined : mrChoices[row.row];
+        await addSong(picked ? { ...row.input, youtubeVideoId: picked } : row.input);
         succeeded++;
       }
       await reload();
@@ -364,6 +398,19 @@ export function HomePage({
       (r) => r.status !== "duplicate-internal" && (r.status !== "duplicate-existing" || duplicatePolicy === "add")
     ).length ?? 0;
 
+  // MR 자동 검색 대상: 실제로 가져올 행 중 MR이 비어 있는 곡. 이미 MR이 있는 곡은 검색도, 덮어쓰기도 하지 않는다.
+  const mrMissingRows =
+    importPreview?.rows.filter(
+      (r) =>
+        r.status !== "duplicate-internal" &&
+        (r.status !== "duplicate-existing" || duplicatePolicy === "add") &&
+        !r.input.youtubeVideoId
+    ) ?? [];
+  const mrTargets = mrMissingRows
+    .filter((r) => hasEnoughInfoForMrSearch(r.input.title, r.input.artist))
+    .map((r) => ({ row: r.row, title: r.input.title, artist: r.input.artist }));
+  const mrInsufficientCount = mrMissingRows.length - mrTargets.length;
+
   return (
     <div
       className="book-focus max-w-md lg:max-w-6xl mx-auto pb-24 relative min-h-screen"
@@ -445,7 +492,7 @@ export function HomePage({
             value={query}
             onChange={setQuery}
             favOnly={favOnly}
-            onToggleFavOnly={() => setFavOnly((v) => !v)}
+            onToggleFavOnly={() => setFavOnly(!favOnly)}
             actions={
               <>
                 {isOwner && songs.length > 0 && (
@@ -554,10 +601,8 @@ export function HomePage({
               ? () => navigate(`/books/${ownerId}/songs/new`)
               : undefined
           }
-          onClearFilters={() => {
-            setQuery("");
-            setFavOnly(false);
-          }}
+          // 한 번에 지운다 — setSearchParams를 연달아 두 번 부르면 앞의 변경이 사라질 수 있다
+          onClearFilters={() => updateParams({ q: null, fav: null, page: null }, { replace: true })}
         />
       ) : (
         <>
@@ -588,7 +633,7 @@ export function HomePage({
           {totalPages > 1 && (
             <div className="px-5 lg:px-8 mt-6 flex items-center justify-center gap-3 text-[12.5px] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.5))]">
               <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                onClick={() => goToPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage === 1}
                 className="px-2.5 py-1.5 rounded-lg bg-[var(--book-chrome-surface,rgba(255,255,255,0.05))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] disabled:opacity-30"
               >
@@ -598,7 +643,7 @@ export function HomePage({
                 {currentPage} / {totalPages}
               </span>
               <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage === totalPages}
                 className="px-2.5 py-1.5 rounded-lg bg-[var(--book-chrome-surface,rgba(255,255,255,0.05))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] disabled:opacity-30"
               >
@@ -698,6 +743,14 @@ export function HomePage({
               className="flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95 disabled:opacity-50"
             >
               <Upload className="h-3.5 w-3.5" /> {importing ? "확인 중..." : "JSON/CSV 가져오기"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowMrBatch(true)}
+              disabled={songs.length === 0}
+              className="disabled:opacity-40 flex items-center gap-1.5 text-[12.5px] px-3 py-1.5 rounded-full bg-[var(--book-chrome-surface,rgba(255,255,255,0.04))] border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] text-[color:var(--book-chrome-muted,rgba(255,255,255,0.6))] transition-[filter] duration-150 hover:brightness-125 active:brightness-95"
+            >
+              <Video className="h-3.5 w-3.5" /> MR 없는 곡 자동 검색
             </button>
             <input
               ref={fileInputRef}
@@ -830,6 +883,14 @@ export function HomePage({
               </div>
             )}
 
+            <ImportMrSection
+              key={importSeq}
+              targets={mrTargets}
+              insufficientCount={mrInsufficientCount}
+              onChoicesChange={setMrChoices}
+              disabled={importing}
+            />
+
             {importToImportCount === 0 && (
               <p className="mt-3 text-[12.5px] text-white/40">
                 {importPreview.rows.length === 0
@@ -863,6 +924,16 @@ export function HomePage({
             </div>
           </div>
         </div>
+      )}
+      {showMrBatch && ownerId && (
+        <BookMrBatchDialog
+          ownerId={ownerId}
+          songs={songs}
+          onClose={(changed) => {
+            setShowMrBatch(false);
+            if (changed) void reload();
+          }}
+        />
       )}
       {/* 하단 고정 "노래 추가" 버튼이 마지막 항목을 가리지 않도록 여백 */}
       {isOwner && <div className="h-24" aria-hidden="true" />}

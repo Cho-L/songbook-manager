@@ -12,11 +12,16 @@ import {
   Lock,
   LockOpen,
   Video,
+  ArrowUp,
+  GripHorizontal,
+  RotateCcw,
 } from "lucide-react";
 import type { Song } from "../types/song";
 import { parseLyrics, hasTimestamps, findCurrentLyricIndex } from "../utils/lyrics";
 import { transposeChordsText } from "../utils/transpose";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
+import { useFloatingPlayerLayout } from "../hooks/useFloatingPlayerLayout";
+import { FLOAT_FOOTER_H, FLOAT_HEADER_H, videoHeight } from "../utils/floatingPlayer";
 import { useAuth } from "../hooks/useAuth";
 import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
@@ -144,6 +149,22 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   useLivePublisher(liveState);
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
+
+  // 플로팅 플레이어: 원래 영상 자리(slot)가 화면에서 벗어나면, 같은 플레이어 요소를 CSS로 화면 구석에 띄운다.
+  // iframe을 DOM에서 옮기거나 복제하지 않으므로 재생 위치/음소거/재생 상태가 그대로 유지되고 영상이 두 번 재생되지 않는다.
+  const [slotEl, setSlotEl] = useState<HTMLDivElement | null>(null);
+  const [slotVisible, setSlotVisible] = useState(true);
+  useEffect(() => {
+    if (!slotEl || typeof IntersectionObserver === "undefined") {
+      setSlotVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(([entry]) => setSlotVisible(entry.isIntersecting), { threshold: 0 });
+    io.observe(slotEl);
+    return () => io.disconnect();
+  }, [slotEl]);
+  const floating = Boolean(slotEl) && !slotVisible;
+  const float = useFloatingPlayerLayout(floating);
 
   useEffect(() => {
     if (!isSynced || currentLineIndex < 0) return;
@@ -405,9 +426,74 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
               </a>
             </div>
           ) : (
-            <div className="aspect-video w-full max-w-2xl mx-auto rounded-lg overflow-hidden mb-6">
-              {/* IFrame Player API가 이 div를 실제 iframe으로 교체한다 (재생시간/종료/오류 추적용) */}
-              <div id={playerContainerId} className="w-full h-full" />
+            // slot: 원래 자리를 계속 차지해서(레이아웃이 튀지 않게) 가시성 판단 기준이 된다.
+            <div ref={setSlotEl} className="aspect-video w-full max-w-2xl mx-auto mb-6" data-testid="player-slot">
+              <div
+                data-testid="player-frame"
+                data-floating={floating ? "true" : "false"}
+                className={
+                  floating
+                    ? "songmode-player-frame fixed z-50 overflow-hidden rounded-lg bg-black shadow-2xl ring-1 ring-white/20"
+                    : "songmode-player-frame w-full h-full rounded-lg overflow-hidden"
+                }
+                style={floating ? { left: float.layout.x, top: float.layout.y, width: float.layout.w } : undefined}
+              >
+                {floating && (
+                  <div className="flex items-center bg-black/85 text-white/80 select-none" style={{ height: FLOAT_HEADER_H }}>
+                    {/* 드래그 핸들: iframe이 아니라 이 막대만 끌 수 있다 (포인터 캡처 + touch-action:none → 드래그 중 스크롤/텍스트 선택 없음) */}
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      data-testid="float-drag-handle"
+                      aria-label="플레이어 이동 (방향키로도 이동할 수 있어요)"
+                      title="끌어서 이동"
+                      className="flex-1 min-w-0 h-full flex items-center justify-center cursor-grab active:cursor-grabbing touch-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-400"
+                      {...float.dragHandlers}
+                    >
+                      <GripHorizontal className="h-4 w-4" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => slotEl?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                      className="h-full px-2 flex items-center gap-1 text-[11.5px] hover:text-white"
+                      aria-label="영상 원래 위치로 이동"
+                      title="원래 위치로"
+                    >
+                      <ArrowUp className="h-3.5 w-3.5" />
+                      {float.layout.w >= 280 && "원래 위치로"}
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="float-reset"
+                      onClick={float.reset}
+                      className="h-full px-2 flex items-center hover:text-white"
+                      aria-label="플레이어 위치와 크기 초기화"
+                      title="위치·크기 초기화"
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+                {/* IFrame Player API가 안쪽 div를 실제 iframe으로 교체한다 (재생시간/종료/오류 추적용).
+                    React가 관리하는 wrapper로 한 겹 감싸서, 위 헤더가 생기고 사라질 때 YT가 바꿔치기한 노드를 기준으로 삽입하지 않게 한다. */}
+                <div className={floating ? "w-full" : "w-full h-full"} style={floating ? { height: videoHeight(float.layout.w) } : undefined}>
+                  <div id={playerContainerId} className="w-full h-full" />
+                </div>
+                {floating && (
+                  <div className="flex justify-end bg-black/85" style={{ height: FLOAT_FOOTER_H }}>
+                    {/* 우하단 크기 조절 핸들 (영상 위가 아니라 별도 막대라 YouTube 컨트롤을 가리지 않는다) */}
+                    <div
+                      data-testid="float-resize-handle"
+                      aria-hidden="true"
+                      title="끌어서 크기 조절"
+                      className="h-full w-6 cursor-nwse-resize touch-none flex items-end justify-end p-0.5"
+                      {...float.resizeHandlers}
+                    >
+                      <span className="block h-2.5 w-2.5 border-r-2 border-b-2 border-white/60" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )
         ) : (

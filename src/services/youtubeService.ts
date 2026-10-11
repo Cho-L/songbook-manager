@@ -16,12 +16,28 @@ export interface YouTubeSearchResult {
  *   - 로컬(npm run dev): vite.config.ts의 개발 전용 미들웨어가 처리한다.
  * 세 곳 모두 같은 로직(YouTube Data API 서버 사이드 호출)을 수행한다.
  */
-export async function searchYouTube(query: string): Promise<YouTubeSearchResult[]> {
-  const res = await fetch(`/api/youtube-search?q=${encodeURIComponent(query)}`);
+export class YouTubeSearchError extends Error {
+  /** HTTP 상태. 네트워크 자체가 실패했으면 0 */
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "YouTubeSearchError";
+    this.status = status;
+  }
+}
+
+export async function searchYouTube(query: string, signal?: AbortSignal): Promise<YouTubeSearchResult[]> {
+  let res: Response;
+  try {
+    res = await fetch(`/api/youtube-search?q=${encodeURIComponent(query)}`, { signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw e;
+    throw new YouTubeSearchError("YouTube 검색 서버에 연결하지 못했어요.", 0);
+  }
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(body?.error ?? "YouTube 검색에 실패했습니다. 잠시 후 다시 시도해주세요.");
+    throw new YouTubeSearchError(body?.error ?? "YouTube 검색에 실패했습니다. 잠시 후 다시 시도해주세요.", res.status);
   }
 
   const data = await res.json();

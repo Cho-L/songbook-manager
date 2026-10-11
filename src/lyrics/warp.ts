@@ -55,3 +55,54 @@ export function compareDurations(refSec: number | undefined, mrSec: number | und
   const diff = mrSec - refSec;
   return { diff, similar: Math.abs(diff) <= toleranceSec };
 }
+
+// ---------------------------------------------------------------- 싱크 보정 간격
+
+/** 한 번 누를 때 움직일 수 있는 간격(초): 0.1 ~ 1.0, 0.1 단위. 정수 "십분의 일 초"(1~10)로 다뤄 부동소수점 오차를 피한다. */
+export const SYNC_STEP_TENTHS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
+export const DEFAULT_SYNC_STEP_TENTHS = 5; // 기존 동작(0.5초)
+
+/** 저장값/입력값을 1~10 정수로 정리한다. 잘못된 값은 기본(0.5초) */
+export function parseSyncStepTenths(raw: unknown): number {
+  const n = typeof raw === "string" ? Number(raw) : typeof raw === "number" ? raw : NaN;
+  return Number.isInteger(n) && n >= 1 && n <= 10 ? n : DEFAULT_SYNC_STEP_TENTHS;
+}
+
+/**
+ * 누적 보정값(초)에 stepTenths/10 초를 direction(+1: 가사 늦게, -1: 가사 빠르게) 방향으로 더한다.
+ * 0.01초 단위로 반올림해서 0.1을 여러 번 더해도 0.30000000000000004 같은 오차가 쌓이지 않는다.
+ */
+export function nudgeOffset(current: number, stepTenths: number, direction: 1 | -1): number {
+  const step = parseSyncStepTenths(stepTenths);
+  return Math.round(current * 100 + direction * step * 10) / 100;
+}
+
+/** "+0.3초" / "-0.5초" / "0초" — 0.1초 단위면 소수 1자리, 그 외(첫 소절 맞추기로 생긴 값)는 2자리 */
+export function formatOffset(offset: number): string {
+  const r = Math.round(offset * 100) / 100;
+  if (r === 0) return "0초";
+  const tenths = Math.round(r * 10) / 10;
+  const text = Math.abs(r - tenths) < 1e-9 ? tenths.toFixed(1) : r.toFixed(2);
+  return `${r > 0 ? "+" : ""}${text}초`;
+}
+
+export function formatStep(stepTenths: number): string {
+  return `${(parseSyncStepTenths(stepTenths) / 10).toFixed(1)}초`;
+}
+
+const STEP_KEY = "songbook:sync-step-tenths";
+/** 마지막으로 고른 보정 간격 (이 브라우저에만 저장되는 보기 설정. 누적 보정값과는 별개) */
+export function readSyncStep(): number {
+  try {
+    return parseSyncStepTenths(localStorage.getItem(STEP_KEY));
+  } catch {
+    return DEFAULT_SYNC_STEP_TENTHS;
+  }
+}
+export function writeSyncStep(stepTenths: number): void {
+  try {
+    localStorage.setItem(STEP_KEY, String(parseSyncStepTenths(stepTenths)));
+  } catch {
+    // ignore
+  }
+}

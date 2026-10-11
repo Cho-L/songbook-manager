@@ -1,6 +1,7 @@
 import type { Song, SongFormInput } from "../types/song";
 import { sampleSongs } from "../data/sampleSongs";
 import { supabase, isSupabaseConfigured } from "./supabaseClient";
+import { isMrEmpty, type MrSetResult } from "../utils/mrBatch";
 
 /**
  * 노래 데이터 접근 인터페이스.
@@ -15,6 +16,11 @@ export interface SongRepository {
   add(input: SongFormInput, ownerId: string): Promise<Song>;
   update(id: string, input: SongFormInput): Promise<Song | null>;
   toggleFavorite(id: string): Promise<Song | null>;
+  /**
+   * MR(youtubeVideoId)이 "지금도 비어 있을 때만" 값을 쓴다 (다른 필드는 건드리지 않는다).
+   * 이미 값이 있으면 쓰지 않고 "conflict" — 기존 MR을 덮어쓰지 않는 것이 이 메서드의 핵심 계약이다.
+   */
+  setYoutubeVideoIdIfEmpty(id: string, videoId: string): Promise<MrSetResult>;
   remove(id: string): Promise<void>;
   /** "노래책 삭제": 계정/프로필은 그대로 두고 이 소유자의 songs만 전부 삭제한다. */
   removeAllByOwner(ownerId: string): Promise<void>;
@@ -100,6 +106,17 @@ export class LocalSongRepository implements SongRepository {
     songs[idx] = { ...songs[idx], favorite: !songs[idx].favorite };
     this.writeRaw(songs);
     return songs[idx];
+  }
+
+  async setYoutubeVideoIdIfEmpty(id: string, videoId: string): Promise<MrSetResult> {
+    // 읽기→쓰기가 동기 코드 안에서 끝나므로 이 탭 안에서는 끼어들 틈이 없다
+    const songs = this.ensureSeeded();
+    const idx = songs.findIndex((s) => s.id === id);
+    if (idx === -1) return "not-found";
+    if (!isMrEmpty(songs[idx].youtubeVideoId)) return "conflict";
+    songs[idx] = { ...songs[idx], youtubeVideoId: videoId, updatedAt: new Date().toISOString() };
+    this.writeRaw(songs);
+    return "updated";
   }
 
   async remove(id: string): Promise<void> {
@@ -246,6 +263,33 @@ export class SupabaseSongRepository implements SongRepository {
 
     if (error) throw error;
     return data ? rowToSong(data as SongRow) : null;
+  }
+
+  /**
+   * 조건부 갱신(compare-and-set): 방금 읽은 youtube_video_id 값이 "그대로일 때만" 그 컬럼 하나만 UPDATE 한다.
+   *  - 읽은 값이 NULL 이면 `youtube_video_id IS NULL`, 빈 문자열/공백이면 `youtube_video_id = '<읽은 값>'` 조건을 건다.
+   *  - 그 사이 다른 사용자가 MR을 넣었다면 조건이 맞지 않아 0행 갱신 → 덮어쓰지 않는다.
+   *  - 스키마/RLS 변경 없이 기존 update 정책(owner/super_admin) 그대로 동작한다.
+   */
+  async setYoutubeVideoIdIfEmpty(id: string, videoId: string): Promise<MrSetResult> {
+    const client = this.client();
+    const { data: cur, error: readError } = await client.from("songs").select("youtube_video_id").eq("id", id).maybeSingle();
+    if (readError) throw readError;
+    if (!cur) return "not-found";
+    const observed = cur.youtube_video_id as string | null;
+    if (!isMrEmpty(observed)) return "conflict";
+
+    const base = client.from("songs").update({ youtube_video_id: videoId }).eq("id", id);
+    const { data, error } = await (observed === null ? base.is("youtube_video_id", null) : base.eq("youtube_video_id", observed)).select("id");
+    if (error) throw error;
+    if (data && data.length > 0) return "updated";
+
+    // 0행: 그 사이 값이 바뀌었거나(→ conflict), RLS가 갱신을 거부했다(→ 오류)
+    const { data: after, error: afterError } = await client.from("songs").select("youtube_video_id").eq("id", id).maybeSingle();
+    if (afterError) throw afterError;
+    if (!after) return "not-found";
+    if (!isMrEmpty(after.youtube_video_id)) return "conflict";
+    throw new Error("저장 권한이 없어요. 이 노래책의 소유자로 로그인했는지 확인해 주세요.");
   }
 
   async remove(id: string): Promise<void> {

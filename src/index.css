@@ -57,3 +57,10 @@ body {
 .overlay-fade-in {
   animation: overlay-fade-in 200ms ease-out;
 }
+
+/* YouTube IFrame API는 iframe에 width/height 속성(640x390)을 심는다 — 플레이어를 감싼 틀 크기(플로팅 포함)를 따라가도록 덮어쓴다 */
+.songmode-player-frame iframe {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

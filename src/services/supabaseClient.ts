@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as
+// import.meta.env 는 Vite 밖(단위 테스트 등)에서는 없을 수 있어 옵셔널 체이닝으로 읽는다 — 앱 동작은 동일하다.
+const supabaseUrl = import.meta.env?.VITE_SUPABASE_URL as string | undefined;
+const supabaseAnonKey = import.meta.env?.VITE_SUPABASE_ANON_KEY as
   | string
   | undefined;
 

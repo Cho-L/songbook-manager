@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { useAutoLyrics } from "../../hooks/useAutoLyrics";
 import { describeStatus } from "../../hooks/useAutoLyrics";
 import { setAutoLyricsEnabled } from "../../lyrics/cache";
+import { SYNC_STEP_TENTHS, formatOffset, formatStep, readSyncStep, writeSyncStep } from "../../lyrics/warp";
 
 type Auto = ReturnType<typeof useAutoLyrics>;
 
@@ -26,6 +27,8 @@ const btnStyle = { borderColor: "rgba(128,128,128,0.35)", backgroundColor: "rgba
 export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: AutoLyricsBarProps) {
   const [tuning, setTuning] = useState(false);
   const [msg, setMsg] = useState("");
+  // 한 번 누를 때 움직일 간격(0.1~1.0초). 현재 누적 보정값(auto.warp.offset)과는 완전히 별개라서 간격을 바꿔도 보정값은 그대로다.
+  const [stepTenths, setStepTenths] = useState(readSyncStep);
   const status = describeStatus({
     searching: auto.searching,
     error: auto.error,
@@ -83,7 +86,7 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
       <div className="flex flex-wrap items-center gap-2 mt-2">
         {canTune && (
           <button type="button" className={btn} style={btnStyle} aria-expanded={tuning} onClick={() => setTuning((v) => !v)}>
-            싱크 보정{Math.abs(offset) > 0.001 ? ` (${offset > 0 ? "+" : ""}${offset.toFixed(1)}초)` : ""}
+            싱크 보정{Math.abs(offset) > 0.001 ? ` (${formatOffset(offset)})` : ""}
           </button>
         )}
         {showRetry && (
@@ -109,11 +112,32 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
 
       {canTune && tuning && (
         <div className="mt-2 flex flex-wrap items-center gap-2" role="group" aria-label="싱크 보정">
-          <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(-0.5)} aria-label="가사를 0.5초 먼저">
-            −0.5초 <span className="opacity-60">(가사 빠르게)</span>
+          <div className="basis-full flex flex-wrap items-center gap-1.5" role="radiogroup" aria-label="한 번에 조절할 간격">
+            <span className="opacity-70 text-[12px] mr-1">조절 간격</span>
+            {SYNC_STEP_TENTHS.map((t) => (
+              <button
+                key={t}
+                type="button"
+                role="radio"
+                aria-checked={stepTenths === t}
+                data-testid={`sync-step-${t}`}
+                className={`${btn} !px-2.5 min-w-[44px] ${stepTenths === t ? "!border-amber-400/70 !bg-amber-400/20 text-amber-500 font-semibold" : ""}`}
+                style={stepTenths === t ? undefined : btnStyle}
+                onClick={() => {
+                  setStepTenths(t);
+                  writeSyncStep(t);
+                }}
+              >
+                {(t / 10).toFixed(1)}
+              </button>
+            ))}
+            <span className="opacity-50 text-[11.5px]">초</span>
+          </div>
+          <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(stepTenths, -1)} aria-label={`가사를 ${formatStep(stepTenths)} 먼저`}>
+            −{formatStep(stepTenths)} <span className="opacity-60">(가사 빠르게)</span>
           </button>
-          <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(0.5)} aria-label="가사를 0.5초 늦게">
-            +0.5초 <span className="opacity-60">(가사 늦게)</span>
+          <button type="button" className={btn} style={btnStyle} onClick={() => auto.nudge(stepTenths, 1)} aria-label={`가사를 ${formatStep(stepTenths)} 늦게`}>
+            +{formatStep(stepTenths)} <span className="opacity-60">(가사 늦게)</span>
           </button>
           <button
             type="button"
@@ -130,8 +154,7 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
             가사가 노래보다 먼저 나오면 "가사 늦게", 늦게 나오면 "가사 빠르게"를 눌러 맞춰요. MR의 인트로가 원곡과 다를 때 쓰면 좋아요.
           </span>
           <span data-testid="auto-lyrics-offset" className="opacity-70 text-[12px]">
-            보정 {offset > 0 ? "+" : ""}
-            {offset.toFixed(2)}초
+            보정 {formatOffset(offset)}
           </span>
           {msg && (
             <span role="status" className="opacity-70 text-[12px]">
@@ -149,7 +172,7 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
       )}
       {showManage && (
         <p className="text-[11.5px] opacity-50 mt-1">
-          저장된 싱크 가사가 없는 곡에서만, 곡 제목과 가수를 가사 서비스(LRCLIB)로 보내 검색해요. 결과는 이 브라우저에만 저장되고 노래 데이터는 바뀌지 않아요.
+          저장된 싱크 가사가 없는 곡에서만, 곡 제목과 가수를 가사 서비스(LRCLIB)로 보내 검색해요. 한글 곡을 못 찾으면 영문 표기를 확인하려고 음악 정보 서비스(MusicBrainz)에도 제목과 가수를 보내 조회해요. 결과는 이 브라우저에만 저장되고 노래 데이터는 바뀌지 않아요.
         </p>
       )}
     </div>

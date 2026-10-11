@@ -4,10 +4,11 @@ import { hasTimestamps, parseLyrics } from "../utils/lyrics";
 import { learnArtistAliases } from "../lyrics/artist";
 import { deleteEntry, isAutoLyricsEnabled, isExpired, readEntry, writeEntry } from "../lyrics/cache";
 import { LrclibProvider } from "../lyrics/providers/lrclib";
+import { MusicBrainzAliasProvider } from "../lyrics/providers/musicbrainz";
 import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyrics } from "../lyrics/pipeline";
-import { clampWarp, compareDurations, isIdentity, warpFromAnchors } from "../lyrics/warp";
+import { clampWarp, compareDurations, isIdentity, nudgeOffset, warpFromAnchors } from "../lyrics/warp";
 import type { Anchor } from "../lyrics/warp";
-import type { LyricsProvider, SyncEntry } from "../lyrics/types";
+import type { AliasProvider, LyricsProvider, SyncEntry } from "../lyrics/types";
 
 /** 화면에 보여 줄 자동 가사/싱크 상태 */
 export type AutoStatusKind =
@@ -32,9 +33,11 @@ export interface AutoStatus {
 }
 
 let provider: LyricsProvider = new LrclibProvider();
+let aliasProvider: AliasProvider | undefined = new MusicBrainzAliasProvider();
 /** 테스트/다른 provider 연결용 */
-export function setLyricsProvider(p: LyricsProvider): void {
+export function setLyricsProvider(p: LyricsProvider, alias?: AliasProvider): void {
   provider = p;
+  aliasProvider = alias;
 }
 
 export function describeStatus(args: {
@@ -108,7 +111,7 @@ export function useAutoLyrics(rawSong: Song | undefined) {
       setSearching(true);
       setError(null);
       try {
-        const result = await resolveLyrics({ songId, title, artist, ownLyrics }, provider, { candidateId: opts.candidateId });
+        const result = await resolveLyrics({ songId, title, artist, ownLyrics }, provider, { candidateId: opts.candidateId, aliasProvider });
         if (id !== reqRef.current) return; // 곡이 바뀌었거나 더 새로운 요청이 있음 → 이 결과는 버린다
         writeEntry(result);
         setEntry(result);
@@ -188,11 +191,11 @@ export function useAutoLyrics(rawSong: Song | undefined) {
       setEntry(null);
       setError(null);
     },
-    /** MR 싱크 보정: 전체를 sec 만큼 이동 */
-    nudge: (sec: number) => {
+    /** MR 싱크 보정: direction +1 = 가사 늦게(offset 증가), -1 = 가사 빠르게(offset 감소). 간격은 0.1초(=1) ~ 1.0초(=10) */
+    nudge: (stepTenths: number, direction: 1 | -1) => {
       if (!entry) return;
       const cur = getWarp(entry, videoId);
-      saveWarp({ ...cur, offset: Math.round((cur.offset + sec) * 100) / 100 });
+      saveWarp({ ...cur, offset: nudgeOffset(cur.offset, stepTenths, direction) });
     },
     resetWarp: () => saveWarp({ offset: 0, ratio: 1 }),
     /** "지금이 첫 소절 시작" — 현재 재생 시간을 첫 싱크 줄의 대응점으로 삼아 오프셋을 맞춘다 */
