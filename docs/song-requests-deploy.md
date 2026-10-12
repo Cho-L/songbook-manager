@@ -58,3 +58,40 @@ wrangler secret put REQUEST_HASH_SALT             # 임의의 긴 문자열(선�
 - IP 해시는 기기를 바꾸거나 VPN을 쓰면 우회할 수 있습니다. 의도적 도배는 관리자 "접수 끄기"와 Cloudflare Rate limiting 으로 대응하세요.
 - 관리자 화면은 5초마다 새로고침하는 방식입니다(실시간 구독 아님).
 - 오버레이의 "신청자" 표시는 대기열의 **재생** 버튼으로 노래 부르기 화면을 연 곡에만 나옵니다 (플레이리스트로 연속 재생 중인 다음 곡의 신청자 표시는 3단계 이후 과제).
+
+
+---
+
+## 추가 (2단계 보강, 2026-10-12)
+
+### SQL 적용 순서 (운영 DB — 직접 실행, 자동 적용 안 됨)
+1. `supabase/migrations/20261011_song_requests.sql` (이미 적용했다면 건너뜀)
+2. `supabase/migrations/20261012_request_queue_v2.sql` — 신청 대기 곡 공개(`pendingSongIds`, `songId`), `start_song_request`(재생 시작 원자화), "노래책당 재생 중 1곡" 인덱스
+3. `supabase/migrations/20261012_song_aliases.sql` — 곡 별칭 컬럼 (별칭을 쓸 때만 필요)
+
+각 파일은 여러 번 실행해도 안전합니다. 2번을 적용하기 전에도 앱은 동작합니다(신청 페이지는 제목+가수로 대기열 상태를 비교, 재생 시작은 예전 2단계 방식으로 대체).
+롤백: 같은 이름 + `_rollback.sql`. 주의: `song_aliases` 롤백은 컬럼과 그 안의 별칭 데이터를 지웁니다.
+
+### OBS 대기열 화면
+- 주소: `https://<사이트>/overlay/queue?book=<노래책 id>` (관리자 → 신청곡 대기열 화면에서 옵션을 고르고 "주소 복사")
+- OBS → 소스 추가 → 브라우저 → URL 붙여넣기. 너비/높이는 OBS 에서 조절 (예: 800×400). 배경은 투명.
+- 로그인/키가 필요 없고, 읽는 데이터는 시청자 신청 페이지와 같은 공개 API 응답(승인/재생 중 곡의 제목·가수·신청자 표시명)뿐입니다.
+- 갱신: 4초마다 조회. 같은 브라우저에서 관리자 화면이 열려 있으면 즉시. 연결이 끊기면 마지막 목록 유지 + 우상단 주황 점, 복구되면 자동 재동기화.
+- 옵션: `n`(대기 곡 수 1~12) `fs`(글자 px) `al`(left/center/right) `bg`(배경 불투명도 0~100) `tc`/`ac`(글자/강조색, # 없이 6자리 hex) `req=0`(신청자 숨김) `head=0`(제목 줄 숨김)
+
+### "신청 서버에 문제가 생겼어요" 진단
+Worker 는 이제 실패를 분류해 (1) Cloudflare 로그 한 줄(`evt: song_request_failure`)과 (2) 응답 JSON 의 `reason` 으로 남깁니다. 키·URL·IP·요청 본문은 포함되지 않습니다.
+브라우저 개발자도구 → Network → `song-requests` 응답의 `reason`, 또는 `wrangler tail` / 대시보드 Workers Logs 에서 확인하세요.
+
+| reason | 의미 | 조치 |
+|---|---|---|
+| `env_missing` (503, not_configured) | SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY 비어 있음 | Worker **런타임** 변수/시크릿 확인 (빌드 변수 아님) |
+| `config_url_invalid` | SUPABASE_URL 형식 오류 | `https://<프로젝트>.supabase.co` 형태인지 |
+| `rpc_function_missing_or_not_in_schema_cache` | `submit_song_request` 없음 | 20261011 SQL 미적용(또는 적용 후 스키마 캐시 갱신 대기) |
+| `rpc_permission_denied` | service_role 에 실행 권한 없음 | SQL 의 마지막 `grant execute … to service_role` 실행 |
+| `rpc_auth_rejected` | 키가 거부됨 (401/403) | service_role 키가 맞는지, 다른 프로젝트 키가 아닌지 |
+| `rpc_not_json_404_wrong_url` | URL 이 Supabase REST 가 아님 | SUPABASE_URL 이 프로젝트 API URL 인지 |
+| `rpc_schema_mismatch` | 함수/컬럼 불일치 | 마이그레이션이 일부만 적용됨 |
+| `rpc_timeout` / `rpc_network` | DB 응답 없음 / 네트워크 | Supabase 프로젝트 일시중지·장애 여부 |
+| `rpc_db_error` | DB 내부 오류 (5xx) | Supabase 로그 확인 |
+| `rpc_unexpected_result` | 함수가 예상 밖 코드를 반환 | 함수 버전 확인 |

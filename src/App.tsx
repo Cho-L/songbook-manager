@@ -13,8 +13,10 @@ import { PlaylistDetailPage } from "./pages/PlaylistDetailPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { BookDesignPage } from "./pages/BookDesignPage";
 import { OverlayPage } from "./pages/OverlayPage";
+import { QueueOverlayPage } from "./pages/QueueOverlayPage";
 import { FeedbackHost } from "./components/ui/feedback";
 import { OverlaySettingsPage } from "./pages/OverlaySettingsPage";
+import { OverlayStudioPage } from "./pages/OverlayStudioPage";
 import { SongRequestPage } from "./pages/SongRequestPage";
 import { RequestQueuePage } from "./pages/RequestQueuePage";
 import { RequireOwner } from "./components/RequireOwner";
@@ -102,6 +104,14 @@ function BookRoutes() {
         }
       />
       <Route
+        path="/overlay-studio"
+        element={
+          <RequireOwner>
+            <OverlayStudioPage />
+          </RequireOwner>
+        }
+      />
+      <Route
         path="/design"
         element={
           <RequireOwner>
@@ -133,6 +143,9 @@ function App() {
   return (
     <Routes>
       <Route path="/overlay" element={<OverlayPage />} />
+      <Route path="/overlay/queue" element={<QueueOverlayPage />} />
+      <Route path="/overlay/song" element={<OverlayPage kind="song" />} />
+      <Route path="/overlay/lyrics" element={<OverlayPage kind="lyrics" />} />
       <Route path="*" element={<AppShell />} />
     </Routes>
   );

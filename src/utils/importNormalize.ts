@@ -29,6 +29,8 @@ const FIELD_ALIASES: Record<keyof SongFormInput, string[]> = {
   chords: ["chords", "chord", "chordText", "코드", "코드내용"],
   memo: ["memo", "note", "notes", "description", "comment", "메모", "비고", "설명"],
   tags: ["tags", "tag", "keywords", "keyword", "태그", "키워드"],
+  titleAliases: ["titleAliases", "titleAlias", "aliases", "title_aliases", "제목별칭", "곡명별칭", "별칭"],
+  artistAliases: ["artistAliases", "artistAlias", "artist_aliases", "가수별칭", "아티스트별칭"],
   youtubeVideoId: [
     "youtubeVideoId", "youtube_video_id", "youtubeUrl", "youtubeURL", "youtube",
     "youtubeLink", "videoUrl", "videoURL", "video", "유튜브", "유튜브링크", "영상", "영상링크",
@@ -91,7 +93,7 @@ export function normalizeImportedValue(
 ): { value: unknown; warning?: string } {
   if (rawValue === undefined || rawValue === null) return { value: undefined };
 
-  if (field === "tags") {
+  if (field === "tags" || field === "titleAliases" || field === "artistAliases") {
     if (Array.isArray(rawValue)) {
       return { value: rawValue.filter((t): t is string => typeof t === "string").map((t) => t.trim()).filter(Boolean) };
     }
@@ -194,6 +196,8 @@ export function normalizeImportedSong(raw: Record<string, unknown>, rowNum: numb
     memo: mapped.memo as string | undefined,
     tags: Array.isArray(mapped.tags) ? (mapped.tags as string[]) : [],
     youtubeVideoId: mapped.youtubeVideoId as string | undefined,
+    titleAliases: Array.isArray(mapped.titleAliases) && mapped.titleAliases.length ? (mapped.titleAliases as string[]) : undefined,
+    artistAliases: Array.isArray(mapped.artistAliases) && mapped.artistAliases.length ? (mapped.artistAliases as string[]) : undefined,
   };
 
   // artist는 DB상 NOT NULL이지만 빈 문자열 저장은 가능 — 전체 오류로 만들지 않고 warning만 남긴다.

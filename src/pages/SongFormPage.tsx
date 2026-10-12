@@ -4,6 +4,7 @@ import { Check, X } from "lucide-react";
 import type { Song, SongFormInput } from "../types/song";
 import { YouTubeSearchPicker } from "../components/song/YouTubeSearchPicker";
 import { normalizeLyrics } from "../utils/lyrics";
+import { parseAliasInput } from "../utils/songAliases";
 
 interface SongFormPageProps {
   songs: Song[];
@@ -24,6 +25,8 @@ interface FormState {
   chords: string;
   memo: string;
   tags: string;
+  titleAliases: string;
+  artistAliases: string;
   youtubeVideoId: string;
 }
 
@@ -40,6 +43,8 @@ const emptyForm: FormState = {
   chords: "",
   memo: "",
   tags: "",
+  titleAliases: "",
+  artistAliases: "",
   youtubeVideoId: "",
 };
 
@@ -57,6 +62,8 @@ function songToForm(song: Song): FormState {
     chords: song.chords ?? "",
     memo: song.memo ?? "",
     tags: song.tags.join(", "),
+    titleAliases: (song.titleAliases ?? []).join(", "),
+    artistAliases: (song.artistAliases ?? []).join(", "),
     youtubeVideoId: song.youtubeVideoId ?? "",
   };
 }
@@ -126,6 +133,8 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
       chords: form.chords || undefined,
       memo: form.memo || undefined,
       tags,
+      titleAliases: parseAliasInput(form.titleAliases).length ? parseAliasInput(form.titleAliases) : undefined,
+      artistAliases: parseAliasInput(form.artistAliases).length ? parseAliasInput(form.artistAliases) : undefined,
       youtubeVideoId: form.youtubeVideoId || undefined,
     };
 
@@ -275,6 +284,25 @@ export function SongFormPage({ songs, onAdd, onUpdate }: SongFormPageProps) {
             value={form.tags}
             onChange={(e) => setField("tags", e.target.value)}
             placeholder="발라드, 연습곡"
+          />
+        </div>
+
+        <div>
+          <label className={labelCls}>제목 별칭 (다른 언어/표기, 쉼표로 구분)</label>
+          <input aria-label="제목 별칭"
+            className={inputCls}
+            value={form.titleAliases}
+            onChange={(e) => setField("titleAliases", e.target.value)}
+            placeholder="Dear Name, 愛称"
+          />
+        </div>
+        <div>
+          <label className={labelCls}>가수 별칭 (쉼표로 구분)</label>
+          <input aria-label="가수 별칭"
+            className={inputCls}
+            value={form.artistAliases}
+            onChange={(e) => setField("artistAliases", e.target.value)}
+            placeholder="IU, 이지은"
           />
         </div>
 

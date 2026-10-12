@@ -146,6 +146,8 @@ interface SongRow {
   chords: string | null;
   memo: string | null;
   tags: string[];
+  title_aliases?: string[] | null;
+  artist_aliases?: string[] | null;
   favorite: boolean;
   youtube_video_id: string | null;
   created_at: string;
@@ -168,6 +170,8 @@ function rowToSong(row: SongRow): Song {
     chords: row.chords ?? undefined,
     memo: row.memo ?? undefined,
     tags: row.tags ?? [],
+    titleAliases: row.title_aliases?.length ? row.title_aliases : undefined,
+    artistAliases: row.artist_aliases?.length ? row.artist_aliases : undefined,
     favorite: row.favorite,
     youtubeVideoId: row.youtube_video_id ?? undefined,
     createdAt: row.created_at,
@@ -175,8 +179,22 @@ function rowToSong(row: SongRow): Song {
   };
 }
 
+/** 별칭 컬럼이 아직 없는 DB(20261012_song_aliases.sql 적용 전)에서 별칭을 저장하려 할 때의 오류를 알아보기 쉬운 문구로 바꾼다 */
+function aliasColumnError(e: { code?: string; message?: string }): Error | null {
+  const m = e.message ?? "";
+  if ((e.code === "PGRST204" || e.code === "42703") && /title_aliases|artist_aliases/.test(m)) {
+    return new Error("별칭을 저장하려면 DB에 별칭 컬럼이 필요해요. supabase/migrations/20261012_song_aliases.sql 을 먼저 적용해주세요. (별칭을 비우면 그대로 저장돼요)");
+  }
+  return null;
+}
+
 function inputToRow(input: SongFormInput) {
+  // 별칭 컬럼은 마이그레이션(20261012_song_aliases.sql) 적용 전 DB에서도 저장이 깨지지 않도록 값이 있을 때만 보낸다
+  const aliases: { title_aliases?: string[]; artist_aliases?: string[] } = {};
+  if (input.titleAliases?.length) aliases.title_aliases = input.titleAliases;
+  if (input.artistAliases?.length) aliases.artist_aliases = input.artistAliases;
   return {
+    ...aliases,
     title: input.title,
     artist: input.artist,
     composer: input.composer ?? null,
@@ -227,7 +245,7 @@ export class SupabaseSongRepository implements SongRepository {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) throw aliasColumnError(error) ?? error;
     return rowToSong(data as SongRow);
   }
 
@@ -240,7 +258,7 @@ export class SupabaseSongRepository implements SongRepository {
       .maybeSingle();
 
     // RLS로 인해 본인 소유가 아니면 data가 null로 옴 (에러가 아니라 0 row 매칭)
-    if (error) throw error;
+    if (error) throw aliasColumnError(error) ?? error;
     return data ? rowToSong(data as SongRow) : null;
   }
 

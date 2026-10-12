@@ -21,41 +21,115 @@ export interface SongRequestEnv {
 const MAX_BODY_BYTES = 2048;
 const RPC_TIMEOUT_MS = 8000;
 
-function json(status: number, payload: unknown, extra: Record<string, string> = {}): Response {
+export function json(status: number, payload: unknown, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
     status,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store", ...extra },
   });
 }
 
-function fail(code: string, extra: Record<string, string> = {}): Response {
+function fail(code: string, extra: Record<string, string> = {}, reason?: string): Response {
   const e = SUBMIT_ERRORS[code] ?? SUBMIT_ERRORS.server_error;
-  return json(e.status, { ok: false, code, error: e.message }, extra);
+  // reason 은 "어느 단계에서 왜 실패했는지"만 나타내는 고정 분류 문자열이다 (키·URL·내부 메시지는 절대 담지 않는다).
+  return json(e.status, reason ? { ok: false, code, error: e.message, reason } : { ok: false, code, error: e.message }, extra);
 }
 
-async function rpc(env: SongRequestEnv, fetchImpl: typeof fetch, name: string, args: Record<string, unknown>): Promise<unknown> {
+/** DB(RPC) 호출 실패를 분류해서 담는 오류. 응답/로그에는 reason·status·pgCode 만 쓴다. */
+export class RpcError extends Error {
+  reason: string;
+  status?: number;
+  pgCode?: string;
+  constructor(reason: string, status?: number, pgCode?: string) {
+    super(reason);
+    this.reason = reason;
+    this.status = status;
+    this.pgCode = pgCode;
+  }
+}
+
+/** 로그용 문자열 정리: 길이 제한 + 토큰처럼 보이는 긴 문자열 가림 */
+function safeText(v: unknown, max = 160): string {
+  if (typeof v !== "string") return "";
+  return v
+    .replace(/eyJ[\w-]{10,}(\.[\w-]+){0,2}/g, "[jwt]")
+    .replace(/\b(sb_|sbp_|sk-)[\w-]{8,}/gi, "[key]")
+    .replace(/[\w-]{32,}/g, "[long]")
+    .slice(0, max);
+}
+
+/** 서버 로그 한 줄 (Cloudflare Workers Logs / wrangler tail 에서 보인다). 비밀값·IP·요청 본문은 남기지 않는다. */
+function logFailure(stage: string, err: unknown, extra: Record<string, unknown> = {}) {
+  const e = err instanceof RpcError ? err : null;
+  console.error(
+    JSON.stringify({
+      evt: "song_request_failure",
+      stage,
+      reason: e?.reason ?? "unexpected",
+      status: e?.status,
+      pg_code: e?.pgCode,
+      err_name: !e && err instanceof Error ? err.name : undefined,
+      ...extra,
+    })
+  );
+}
+
+export async function rpc(env: SongRequestEnv, fetchImpl: typeof fetch, name: string, args: Record<string, unknown>): Promise<unknown> {
+  let endpoint: string;
+  try {
+    endpoint = `${new URL(env.SUPABASE_URL!.trim()).origin}/rest/v1/rpc/${name}`;
+  } catch {
+    throw new RpcError("config_url_invalid");
+  }
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), RPC_TIMEOUT_MS);
   try {
-    const res = await fetchImpl(`${env.SUPABASE_URL!.replace(/\/+$/, "")}/rest/v1/rpc/${name}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        apikey: env.SUPABASE_SERVICE_ROLE_KEY!,
-        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY!}`,
-      },
-      body: JSON.stringify(args),
-      signal: ctrl.signal,
-    });
-    if (!res.ok) throw new Error(`rpc ${name} failed: ${res.status}`);
-    return await res.json();
+    let res: Response;
+    try {
+      res = await fetchImpl(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY!,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY!}`,
+        },
+        body: JSON.stringify(args),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      throw new RpcError(e instanceof Error && e.name === "AbortError" ? "rpc_timeout" : "rpc_network");
+    }
+    if (!res.ok) {
+      // PostgREST 오류 본문({code,message,hint})에서 코드만 읽어 원인을 분류한다.
+      const pg = await res
+        .json()
+        .then((j) => (j && typeof j === "object" ? (j as { code?: unknown }) : null))
+        .catch(() => null); // JSON 이 아닌 응답 (예: 잘못된 URL 이 HTML 을 돌려줌)
+      const pgCode = typeof pg?.code === "string" ? safeText(pg.code, 12) : undefined;
+      let reason = "rpc_http_error";
+      if (!pg) reason = res.status === 404 ? "rpc_not_json_404_wrong_url" : "rpc_not_json";
+      else if (pgCode === "PGRST202" || (res.status === 404 && pgCode?.startsWith("PGRST"))) reason = "rpc_function_missing_or_not_in_schema_cache";
+      else if (pgCode === "42501") reason = "rpc_permission_denied";
+      else if (res.status === 401 || res.status === 403) reason = "rpc_auth_rejected";
+      else if (pgCode === "42883" || pgCode === "42703" || pgCode === "42P01") reason = "rpc_schema_mismatch";
+      else if (res.status >= 500) reason = "rpc_db_error";
+      throw new RpcError(reason, res.status, pgCode);
+    }
+    try {
+      return await res.json();
+    } catch {
+      throw new RpcError("rpc_bad_json", res.status);
+    }
   } finally {
     clearTimeout(timer);
   }
 }
 
 export async function handleSongRequests(request: Request, env: SongRequestEnv, fetchImpl: typeof fetch = fetch): Promise<Response> {
-  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) return fail("not_configured");
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_ROLE_KEY) {
+    // 어떤 변수가 비었는지만 기록 (값은 기록하지 않음)
+    console.error(JSON.stringify({ evt: "song_request_failure", stage: "config", reason: "env_missing", missing: [!env.SUPABASE_URL && "SUPABASE_URL", !env.SUPABASE_SERVICE_ROLE_KEY && "SUPABASE_SERVICE_ROLE_KEY"].filter(Boolean) }));
+    return fail("not_configured");
+  }
   const url = new URL(request.url);
 
   if (request.method === "GET") {
@@ -64,8 +138,9 @@ export async function handleSongRequests(request: Request, env: SongRequestEnv, 
     try {
       const data = await rpc(env, fetchImpl, "get_public_request_queue", { p_book_id: book });
       return json(200, data, { "Cache-Control": "public, max-age=3" });
-    } catch {
-      return fail("server_error");
+    } catch (e) {
+      logFailure("get_queue", e);
+      return fail("server_error", {}, e instanceof RpcError ? e.reason : "unexpected");
     }
   }
 
@@ -109,10 +184,12 @@ export async function handleSongRequests(request: Request, env: SongRequestEnv, 
       p_name: parsed.value.name,
       p_key: key,
     })) as typeof result;
-  } catch {
-    return fail("server_error");
+  } catch (e) {
+    logFailure("submit", e);
+    return fail("server_error", {}, e instanceof RpcError ? e.reason : "unexpected");
   }
   if (result?.ok) return json(200, { ok: true, id: result.id, position: result.position });
   const code = typeof result?.code === "string" && SUBMIT_ERRORS[result.code] ? result.code : "server_error";
+  if (code === "server_error") logFailure("submit", new RpcError("rpc_unexpected_result"), { result_code: safeText(result?.code, 40) });
   return fail(code, code === "cooldown" ? { "Retry-After": "20" } : {});
 }

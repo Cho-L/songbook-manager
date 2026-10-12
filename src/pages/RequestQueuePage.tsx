@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ArrowDown, ArrowUp, Check, ChevronLeft, Copy, Play, RefreshCw, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronLeft, Copy, Play, RefreshCw, SkipForward, X } from "lucide-react";
 import { confirmAsync, notify } from "../components/ui/feedback";
 import { useBookDesign } from "../hooks/useBookDesign";
 import { getChromeCssVars } from "../utils/color";
@@ -9,6 +9,7 @@ import {
   getAdminRequestRepository,
   normalizeSettings,
 } from "../services/songRequestRepository";
+import { DEFAULT_QUEUE_OVERLAY, buildQueueOverlayUrl, type QueueOverlaySettings } from "../utils/queueOverlay";
 import { canTransition, moveInOrder, type RequestSettings, type RequestStatus, type SongRequest } from "../utils/songRequest";
 
 const POLL_MS = 5000;
@@ -26,6 +27,8 @@ export function RequestQueuePage() {
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   const [copied, setCopied] = useState(false);
+  const [qo, setQo] = useState<QueueOverlaySettings>(DEFAULT_QUEUE_OVERLAY);
+  const [qoCopied, setQoCopied] = useState(false);
 
   const bookStyle = {
     "--book-accent": design.accentColor,
@@ -75,6 +78,16 @@ export function RequestQueuePage() {
       busyRef.current = false;
       setBusy(false);
       await reload();
+      // 같은 브라우저에서 열린 OBS 대기열 화면에 즉시 알림 (다른 기기의 OBS 는 4초 주기 조회로 따라온다)
+      try {
+        if (ownerId) {
+          const bc = new BroadcastChannel("songbook-request-queue");
+          bc.postMessage(ownerId);
+          bc.close();
+        }
+      } catch {
+        /* 미지원 환경 */
+      }
     }
   }
 
@@ -103,6 +116,7 @@ export function RequestQueuePage() {
 
   const dirty = settings && draft && (settings.accepting !== draft.accepting || settings.maxQueue !== draft.maxQueue || settings.perUserMax !== draft.perUserMax);
   const url = `${window.location.origin}/books/${ownerId}/request`;
+  const obsUrl = ownerId ? buildQueueOverlayUrl(window.location.origin, ownerId, qo) : "";
   const muted = { color: "var(--book-chrome-muted, rgba(255,255,255,0.55))" } as const;
   const box = { backgroundColor: "var(--book-chrome-surface, rgba(255,255,255,0.05))", borderColor: "var(--book-chrome-border, rgba(255,255,255,0.12))" } as const;
   const smallBtn = "inline-flex items-center gap-1 rounded-lg border px-2.5 min-h-[36px] text-[12.5px] disabled:opacity-40";
@@ -187,6 +201,35 @@ export function RequestQueuePage() {
         <p className="text-[11.5px] mt-1.5" style={muted}>이 주소를 방송 설명란/채팅 공지에 올리세요. 시청자는 로그인 없이 신청할 수 있어요.</p>
       </section>
 
+      <section className="rounded-xl border px-4 py-3 mb-6" style={box} aria-labelledby="req-obs" data-testid="obs-queue-section">
+        <h2 id="req-obs" className="text-[13.5px] font-semibold mb-1">OBS 대기열 화면 주소</h2>
+        <p className="text-[11.5px] mb-2" style={muted}>OBS → 소스 추가 → 브라우저에 붙여넣으세요. 로그인/비밀키 없이 승인된 곡의 제목·가수·신청자 이름만 보여요. 승인/완료하면 몇 초 안에 바뀌어요.</p>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2 text-[12px]">
+          <label className="block" style={muted}>대기 곡 수
+            <input type="number" min={1} max={12} data-testid="qo-n" value={qo.n} onChange={(e) => setQo((v) => ({ ...v, n: Math.min(12, Math.max(1, Number(e.target.value) || 1)) }))} className="book-input w-full mt-1 rounded-lg border px-2 py-1.5 text-[13px] outline-none" style={{ ...box, color: "var(--book-text,#fff)" }} />
+          </label>
+          <label className="block" style={muted}>글자 크기
+            <input type="number" min={12} max={96} data-testid="qo-fs" value={qo.fs} onChange={(e) => setQo((v) => ({ ...v, fs: Math.min(96, Math.max(12, Number(e.target.value) || 12)) }))} className="book-input w-full mt-1 rounded-lg border px-2 py-1.5 text-[13px] outline-none" style={{ ...box, color: "var(--book-text,#fff)" }} />
+          </label>
+          <label className="block" style={muted}>정렬
+            <select data-testid="qo-align" value={qo.align} onChange={(e) => setQo((v) => ({ ...v, align: e.target.value as QueueOverlaySettings["align"] }))} className="book-input w-full mt-1 rounded-lg border px-2 py-1.5 text-[13px] outline-none" style={{ ...box, color: "var(--book-text,#fff)" }}>
+              <option value="left">왼쪽</option><option value="center">가운데</option><option value="right">오른쪽</option>
+            </select>
+          </label>
+          <label className="block" style={muted}>배경 불투명도 %
+            <input type="number" min={0} max={100} data-testid="qo-bg" value={qo.bg} onChange={(e) => setQo((v) => ({ ...v, bg: Math.min(100, Math.max(0, Number(e.target.value) || 0)) }))} className="book-input w-full mt-1 rounded-lg border px-2 py-1.5 text-[13px] outline-none" style={{ ...box, color: "var(--book-text,#fff)" }} />
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <input readOnly aria-label="OBS 대기열 주소" data-testid="obs-queue-url" value={obsUrl} onFocus={(e) => e.currentTarget.select()} className="book-input flex-1 min-w-[12rem] rounded-lg border px-3 py-2 text-[12.5px] outline-none" style={{ ...box, color: "var(--book-text,#fff)" }} />
+          <button type="button" className={smallBtn} style={box} onClick={async () => { try { await navigator.clipboard.writeText(obsUrl); setQoCopied(true); window.setTimeout(() => setQoCopied(false), 1500); } catch { notify("복사하지 못했어요. 주소를 직접 선택해서 복사해주세요.", "error"); } }}>
+            {qoCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />} {qoCopied ? "복사됨" : "주소 복사"}
+          </button>
+          <a href={obsUrl} target="_blank" rel="noreferrer" className={smallBtn} style={box} data-testid="obs-queue-open">미리보기 열기</a>
+          <button type="button" className={smallBtn} style={box} data-testid="to-studio" onClick={() => navigate(`/books/${ownerId}/overlay-studio`)}>Overlay Studio 에서 꾸미기</button>
+        </div>
+      </section>
+
       <section className="mb-6" aria-labelledby="req-pending">
         <h2 id="req-pending" className="text-[14px] font-semibold mb-2">확인 대기 <span style={muted}>({pending.length})</span></h2>
         {pending.length === 0 && <p className="text-[13px]" style={muted} data-testid="pending-empty">새 신청이 없어요.</p>}
@@ -213,13 +256,16 @@ export function RequestQueuePage() {
                     <span className="text-[12px] font-semibold" style={{ color: "var(--book-accent,#fbbf24)" }}>▶ 재생 중</span>
                     {r.songId && <button type="button" className={smallBtn} style={box} onClick={() => navigate(`/books/${ownerId}/songs/${r.songId}/sing?request=${encodeURIComponent(r.id)}`)}>화면 열기</button>}
                     <button type="button" data-testid="finish" disabled={busy} onClick={() => setStatus(r, "done")} className={smallBtn} style={box}><Check className="h-3.5 w-3.5" /> 완료</button>
+                    <button type="button" data-testid="skip" disabled={busy || !ownerId} title="대기열 맨 뒤로 보내요" onClick={() => ownerId && void act(() => repo.skip(ownerId, r.id), "맨 뒤로 보냈어요.")} className={smallBtn} style={box}><SkipForward className="h-3.5 w-3.5" /> 건너뛰기</button>
+                    <button type="button" data-testid="cancel" disabled={busy} onClick={() => setStatus(r, "canceled")} className={smallBtn} style={{ ...box, color: "#f87171" }}><X className="h-3.5 w-3.5" /> 취소</button>
                   </>
                 ) : (
                   <>
                     <button type="button" data-testid="move-up" aria-label="위로" disabled={busy || i <= 0} onClick={() => void act(() => repo.reorder(moveInOrder(approvedIds, r.id, -1)))} className={smallBtn} style={box}><ArrowUp className="h-3.5 w-3.5" /></button>
                     <button type="button" data-testid="move-down" aria-label="아래로" disabled={busy || i < 0 || i >= approvedIds.length - 1} onClick={() => void act(() => repo.reorder(moveInOrder(approvedIds, r.id, 1)))} className={smallBtn} style={box}><ArrowDown className="h-3.5 w-3.5" /></button>
                     <button type="button" data-testid="play" disabled={busy || !r.songId} title={r.songId ? "" : "노래책에서 삭제된 곡이에요"} onClick={() => void play(r)} className={smallBtn} style={{ ...box, color: "var(--book-accent,#fbbf24)" }}><Play className="h-3.5 w-3.5" /> 재생</button>
-                    <button type="button" data-testid="remove" disabled={busy} onClick={() => setStatus(r, "rejected")} className={smallBtn} style={{ ...box, color: "#f87171" }}><X className="h-3.5 w-3.5" /> 제외</button>
+                    <button type="button" data-testid="skip" disabled={busy || !ownerId || i >= approvedIds.length - 1} title="대기열 맨 뒤로 보내요" onClick={() => ownerId && void act(() => repo.skip(ownerId, r.id), "맨 뒤로 보냈어요.")} className={smallBtn} style={box}><SkipForward className="h-3.5 w-3.5" /> 건너뛰기</button>
+                    <button type="button" data-testid="remove" disabled={busy} onClick={() => setStatus(r, "canceled")} className={smallBtn} style={{ ...box, color: "#f87171" }}><X className="h-3.5 w-3.5" /> 취소</button>
                   </>
                 )}
               </Row>
@@ -234,8 +280,8 @@ export function RequestQueuePage() {
           <ul className="flex flex-col gap-2" data-testid="finished-list">
             {finished.map((r) => (
               <Row key={r.id} r={r}>
-                <span className="text-[12px]" style={muted}>{r.status === "done" ? "완료" : "거절"}</span>
-                {r.status === "rejected" && <button type="button" disabled={busy} onClick={() => setStatus(r, "pending", "확인 대기로 되돌렸어요.")} className={smallBtn} style={box}>되돌리기</button>}
+                <span className="text-[12px]" style={muted}>{r.status === "done" ? "완료" : r.status === "canceled" ? "취소" : "거절"}</span>
+                {(r.status === "rejected") && <button type="button" disabled={busy} onClick={() => setStatus(r, "pending", "확인 대기로 되돌렸어요.")} className={smallBtn} style={box}>되돌리기</button>}
               </Row>
             ))}
           </ul>

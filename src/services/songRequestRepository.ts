@@ -13,6 +13,7 @@ import {
   type RequestStatus,
   type SongRequest,
   type SubmitInput,
+  canTransition,
 } from "../utils/songRequest";
 
 /**
@@ -50,6 +51,8 @@ export interface AdminRequestRepository {
   startPlaying(bookId: string, id: string): Promise<void>;
   /** 주어진 순서대로 position 을 1..n 으로 다시 매긴다 */
   reorder(orderedIds: string[]): Promise<void>;
+  /** 건너뛰기: 승인된 곡/재생 중인 곡을 대기열 맨 뒤로 보낸다 (재생 중이면 다시 "대기"로 돌아감) */
+  skip(bookId: string, id: string): Promise<void>;
   /** 처리가 끝난(완료/거절) 기록 삭제 */
   clearFinished(bookId: string): Promise<void>;
 }
@@ -62,7 +65,12 @@ class HttpPublicClient implements PublicRequestClient {
     const data = await res.json().catch(() => null);
     if (!res.ok || !data || typeof data !== "object") throw new Error("신청 현황을 불러오지 못했어요.");
     const d = data as Partial<PublicQueue>;
-    return { accepting: Boolean(d.accepting), pendingCount: Number(d.pendingCount) || 0, queue: Array.isArray(d.queue) ? d.queue : [] };
+    return {
+      accepting: Boolean(d.accepting),
+      pendingCount: Number(d.pendingCount) || 0,
+      pendingSongIds: Array.isArray(d.pendingSongIds) ? d.pendingSongIds.filter((x): x is string => typeof x === "string") : [],
+      queue: Array.isArray(d.queue) ? d.queue : [],
+    };
   }
 
   async submit(input: SubmitInput & { website?: string }): Promise<SubmitResult> {
@@ -147,8 +155,9 @@ class LocalPublicClient implements PublicRequestClient {
     const queue = rows
       .filter((r) => r.status === "approved" || r.status === "playing")
       .sort((a, b) => Number(b.status === "playing") - Number(a.status === "playing") || a.position - b.position)
-      .map((r) => ({ id: r.id, title: r.title, artist: r.artist, requesterName: r.requesterName, status: r.status as "approved" | "playing" }));
-    return { accepting: readLocalSettings(bookId).accepting, pendingCount: rows.filter((r) => r.status === "pending").length, queue };
+      .map((r) => ({ id: r.id, songId: r.songId, title: r.title, artist: r.artist, requesterName: r.requesterName, status: r.status as "approved" | "playing" }));
+    const pend = rows.filter((r) => r.status === "pending");
+    return { accepting: readLocalSettings(bookId).accepting, pendingCount: pend.length, pendingSongIds: pend.map((r) => r.songId).filter((x): x is string => !!x), queue };
   }
 
   async submit(input: SubmitInput & { website?: string }): Promise<SubmitResult> {
@@ -203,6 +212,9 @@ class LocalAdminRepository implements AdminRequestRepository {
   }
   async setStatus(id: string, status: RequestStatus) {
     this.patch(id, (r, rows) => {
+      // 이미 다른 화면에서 처리된 신청을 오래된 화면이 다시 바꾸지 못하게 한다 (승인 중복 방지)
+      if (r.status === status) return;
+      if (!canTransition(r.status, status)) throw new RequestConflictError("이미 다른 화면에서 처리된 신청이에요. 목록을 새로 고쳤어요.");
       if (["pending", "approved", "playing"].includes(status) && rows.some((x) => x.id !== id && x.songId && x.songId === r.songId && ["pending", "approved", "playing"].includes(x.status))) {
         throw new RequestConflictError("같은 곡이 이미 대기열에 있어서 되돌릴 수 없어요.");
       }
@@ -212,8 +224,18 @@ class LocalAdminRepository implements AdminRequestRepository {
       if (status === "done" || status === "rejected" || status === "canceled") r.doneAt = now;
     });
   }
+  async skip(bookId: string, id: string) {
+    const rows = readRows(bookId);
+    const t = rows.find((r) => r.id === id);
+    if (!t || (t.status !== "approved" && t.status !== "playing")) throw new RequestConflictError("이미 다른 화면에서 처리된 신청이에요. 목록을 새로 고쳤어요.");
+    t.status = "approved";
+    t.position = Math.max(0, ...rows.map((r) => r.position)) + 1;
+    writeRows(bookId, rows);
+  }
   async startPlaying(bookId: string, id: string) {
     const rows = readRows(bookId);
+    const target = rows.find((r) => r.id === id);
+    if (!target || (target.status !== "approved" && target.status !== "playing")) throw new RequestConflictError("이미 다른 화면에서 처리된 신청이에요. 목록을 새로 고쳤어요.");
     const now = new Date().toISOString();
     for (const r of rows) if (r.status === "playing" && r.id !== id) { r.status = "done"; r.doneAt = now; }
     const t = rows.find((r) => r.id === id);
@@ -254,6 +276,9 @@ function setupError(e: { code?: string; message?: string }): Error {
   return new Error(e.message || "신청곡 처리 중 오류가 났어요.");
 }
 
+const CONFLICT_MSG = "이미 다른 화면에서 처리된 신청이에요. 목록을 새로 고쳤어요.";
+const STATUS_ORDER: Record<RequestStatus, true> = { pending: true, approved: true, playing: true, done: true, rejected: true, canceled: true };
+
 class SupabaseAdminRepository implements AdminRequestRepository {
   private db() {
     if (!supabase) throw new Error("Supabase 가 설정되지 않았어요.");
@@ -282,15 +307,35 @@ class SupabaseAdminRepository implements AdminRequestRepository {
     if (error) throw setupError(error);
   }
   async setStatus(id: string, status: RequestStatus) {
-    const { error } = await this.db().from("song_requests").update({ status }).eq("id", id);
+    // "지금 상태가 이 전이를 허용하는 상태일 때만" 바꾼다 (한 문장으로 조건+변경). 두 화면에서 동시에 승인/거절해도 한 번만 반영된다.
+    const allowedFrom = (Object.keys(STATUS_ORDER) as RequestStatus[]).filter((f) => canTransition(f, status));
+    const { data, error } = await this.db().from("song_requests").update({ status }).eq("id", id).in("status", allowedFrom).select("id");
     if (error) throw setupError(error);
+    if (!data || data.length === 0) throw new RequestConflictError(CONFLICT_MSG);
   }
   async startPlaying(bookId: string, id: string) {
     const db = this.db();
+    // 우선 한 트랜잭션짜리 DB 함수(20261012 마이그레이션). 아직 적용 전이면 예전 2단계 방식으로 대신한다.
+    const rpc = await db.rpc("start_song_request", { p_id: id });
+    if (!rpc.error) {
+      if (rpc.data !== true) throw new RequestConflictError(CONFLICT_MSG);
+      return;
+    }
+    if (rpc.error.code !== "PGRST202" && rpc.error.code !== "42883") throw setupError(rpc.error);
     const prev = await db.from("song_requests").update({ status: "done" }).eq("book_id", bookId).eq("status", "playing").neq("id", id);
     if (prev.error) throw setupError(prev.error);
-    const { error } = await db.from("song_requests").update({ status: "playing" }).eq("id", id);
+    const { data, error } = await db.from("song_requests").update({ status: "playing" }).eq("id", id).in("status", ["approved", "playing"]).select("id");
     if (error) throw setupError(error);
+    if (!data || data.length === 0) throw new RequestConflictError(CONFLICT_MSG);
+  }
+  async skip(bookId: string, id: string) {
+    const db = this.db();
+    const { data: max, error: e1 } = await db.from("song_requests").select("position").eq("book_id", bookId).order("position", { ascending: false }).limit(1).maybeSingle();
+    if (e1) throw setupError(e1);
+    const next = ((max as { position: number } | null)?.position ?? 0) + 1;
+    const { data, error } = await db.from("song_requests").update({ status: "approved", position: next }).eq("id", id).in("status", ["approved", "playing"]).select("id");
+    if (error) throw setupError(error);
+    if (!data || data.length === 0) throw new RequestConflictError(CONFLICT_MSG);
   }
   async reorder(orderedIds: string[]) {
     const db = this.db();

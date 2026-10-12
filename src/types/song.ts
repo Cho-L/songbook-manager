@@ -13,6 +13,9 @@ export interface Song {
   chords?: string;
   memo?: string;
   tags: string[];
+  /** 다른 언어/표기의 제목·가수 (검색과 가사 자동 검색에 쓰인다). 예: 이름에게 → ["Dear Name"], 아이유 → ["IU"] */
+  titleAliases?: string[];
+  artistAliases?: string[];
   favorite: boolean;
   youtubeVideoId?: string; // YouTube MR 영상 ID
   createdAt: string; // ISO 8601

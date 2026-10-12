@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Search, X } from "lucide-react";
+import { useImeSafeInput } from "../../hooks/useImeSafeInput";
 
 interface SearchBarProps {
   value: string;
@@ -17,6 +18,8 @@ export function SearchBar({
   onToggleFavOnly,
   actions,
 }: SearchBarProps) {
+  // 한글 조합 중에는 URL/목록 상태를 건드리지 않는다 (입력이 밀리는 문제 방지)
+  const input = useImeSafeInput(value, onChange);
   return (
     <div
       className="px-5 sticky top-0 z-10 backdrop-blur pb-3 pt-1"
@@ -28,8 +31,13 @@ export function SearchBar({
           style={{ color: "var(--book-chrome-muted, rgba(255,255,255,0.3))" }}
         />
         <input
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
+          enterKeyHint="search"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
+          data-testid="song-search"
+          value={input.value}
+          {...input.inputProps}
           placeholder="제목, 가수, 장르, 태그 검색"
           className="book-input w-full rounded-xl pl-9 pr-9 py-2.5 text-sm outline-none transition-colors border border-[color:var(--book-chrome-border,rgba(255,255,255,0.1))] focus:border-[color:var(--book-accent,#fbbf24)]"
           style={{
@@ -37,10 +45,10 @@ export function SearchBar({
             color: "var(--book-text, #ffffff)",
           }}
         />
-        {value && (
+        {input.value && (
           <button
             type="button"
-            onClick={() => onChange("")}
+            onClick={input.clear}
             aria-label="검색어 지우기"
             className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-[color:var(--book-chrome-muted,rgba(255,255,255,0.3))] hover:text-[color:var(--book-chrome-text,rgba(255,255,255,0.6))]"
           >

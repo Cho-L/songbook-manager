@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { OverlayView } from "../components/overlay/OverlayView";
+import { useOverlayConfig } from "../hooks/useOverlayConfig";
+import { constrainOverlay } from "../utils/overlayStudio";
 import { parseOverlaySettings, sanitizeOverlaySettings, type OverlaySettings } from "../types/overlay";
 import {
   LIVE_STALE_MS,
@@ -27,14 +29,18 @@ const PRESENCE_MS = 10000;
  * 일반 앱 UI 없이 방송 정보만 그리고, 배경은 투명이다. 로그인/토큰이 필요 없다.
  * 표시 설정은 URL 쿼리에서 읽고, 곡 정보는 Supabase Realtime(다른 브라우저/기기) 또는 같은 브라우저 채널로 받는다.
  */
-export function OverlayPage() {
+export function OverlayPage({ kind }: { kind?: "song" | "lyrics" } = {}) {
   const [params] = useSearchParams();
   // URL에 들어 있는 설정은 "처음 모습"일 뿐이다. 설정 화면에서 보낸 최신 설정이 오면 그것으로 바뀐다 (OBS URL을 다시 만들 필요 없음).
   const urlSettings = useMemo(() => parseOverlaySettings(params), [params]);
   const bookFilter = params.get("book");
   const liveKey = params.get("lk");
   // fx=1: 이 URL의 디자인에 고정 (실시간 설정 동기화를 따르지 않는다). 서로 다른 디자인의 오버레이를 같이 쓰고 싶을 때만 사용.
-  const fixed = params.get("fx") === "1";
+  // kind(= /overlay/song, /overlay/lyrics 독립 주소)는 설정 화면의 실시간 설정 동기화를 따르지 않는다 (종류별 저장 설정/URL 설정만 사용)
+  const fixed = params.get("fx") === "1" || kind !== undefined;
+  // cfg=1: Overlay Studio 에 저장된 설정을 불러온다. 옛 /overlay 주소는 이 경로를 전혀 타지 않는다 (요청 없음).
+  const useSaved = kind !== undefined && params.get("cfg") === "1";
+  const saved = useOverlayConfig(kind ?? "song", bookFilter, useSaved);
 
   // 실시간 채널은 노래책 id + 방송 키가 모두 올바를 때만 연다 (키 없는 옛 URL은 같은 브라우저 안에서만 동작)
   const target = useMemo<LiveTarget | undefined>(
@@ -52,7 +58,8 @@ export function OverlayPage() {
     const best = candidates.sort((a, b) => b.ver - a.ver)[0];
     return best ? { settings: sanitizeOverlaySettings(best.settings), ver: best.ver } : { settings: urlSettings, ver: 0 };
   });
-  const settings = fixed ? urlSettings : applied.settings;
+  const settings = kind ? constrainOverlay(kind, saved.config ? saved.config.overlay : urlSettings) : fixed ? urlSettings : applied.settings;
+  const box = useSaved ? saved.config?.box : undefined;
   const verRef = useRef(applied.ver);
   const [live, setLive] = useState<LiveState | null>(() => readLive());
   const [stale, setStale] = useState(false);
@@ -141,9 +148,28 @@ export function OverlayPage() {
   const matches = live !== null && (!bookFilter || live.bookId === bookFilter);
   const active = matches && !stale ? live : null;
 
+  const inset = box ? box.padding + box.borderW : 0;
+  const view = <OverlayView state={active} status={everConnected ? "lost" : "waiting"} settings={settings} width={Math.max(1, size.w - 2 * inset)} height={Math.max(1, size.h - 2 * inset)} />;
   return (
     <div style={{ position: "fixed", inset: 0, background: "transparent" }}>
-      <OverlayView state={active} status={everConnected ? "lost" : "waiting"} settings={settings} width={size.w} height={size.h} />
+      {box ? (
+        <div
+          data-testid="overlay-frame"
+          style={{
+            position: "absolute",
+            inset: 0,
+            boxSizing: "border-box",
+            overflow: "hidden",
+            padding: box.padding,
+            borderRadius: box.radius,
+            border: box.borderW > 0 ? `${box.borderW}px solid ${box.borderColor}` : "none",
+          }}
+        >
+          <div style={{ position: "relative", width: "100%", height: "100%" }}>{view}</div>
+        </div>
+      ) : (
+        view
+      )}
     </div>
   );
 }

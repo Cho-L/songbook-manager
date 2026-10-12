@@ -22,6 +22,8 @@ function toBackupSong(song: Song): BackupSong {
     memo: song.memo,
     tags: song.tags,
     youtubeVideoId: song.youtubeVideoId,
+    titleAliases: song.titleAliases?.length ? song.titleAliases : undefined,
+    artistAliases: song.artistAliases?.length ? song.artistAliases : undefined,
   };
 }
 
@@ -95,6 +97,11 @@ export interface ImportResult {
   totalRows: number;
 }
 
+function strArr(v: unknown): string[] | undefined {
+  const a = Array.isArray(v) ? v.filter((t): t is string => typeof t === "string" && !!t.trim()) : [];
+  return a.length ? a : undefined;
+}
+
 function toSongFormInput(raw: Record<string, unknown>): SongFormInput {
   return {
     title: raw.title as string,
@@ -111,6 +118,8 @@ function toSongFormInput(raw: Record<string, unknown>): SongFormInput {
     tags: Array.isArray(raw.tags) ? raw.tags.filter((t): t is string => typeof t === "string") : [],
     youtubeVideoId:
       typeof raw.youtubeVideoId === "string" && raw.youtubeVideoId ? raw.youtubeVideoId : undefined,
+    titleAliases: strArr(raw.titleAliases),
+    artistAliases: strArr(raw.artistAliases),
   };
 }
 

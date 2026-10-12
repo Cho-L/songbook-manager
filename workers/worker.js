@@ -11,6 +11,7 @@
  * 이 파일 안에서만 서버 사이드로 쓰이고 브라우저에는 절대 노출되지 않는다.
  */
 import { handleSongRequests } from "../src/server/songRequestHandler";
+import { handleOverlayConfig } from "../src/server/overlayConfigHandler";
 
 export default {
   async fetch(request, env, _ctx) {
@@ -23,6 +24,11 @@ export default {
     // 시청자 신청곡 접수/조회 (SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY 는 Worker 비밀 환경변수 — docs/song-requests-deploy.md)
     if (url.pathname === "/api/song-requests") {
       return handleSongRequests(request, env);
+    }
+
+    // OBS Overlay Studio 저장 설정 공개 조회 (같은 SUPABASE_* 비밀 환경변수 사용)
+    if (url.pathname === "/api/overlay-config") {
+      return handleOverlayConfig(request, env);
     }
 
     // SPA: 나머지는 정적 자산으로 서빙. 없는 경로(react-router 하위 경로 등)는

@@ -454,6 +454,15 @@ export function HomePage({
           )}
           {isOwner && (
             <button
+              onClick={() => navigate(`/books/${ownerId}/overlay-studio`)}
+              className={NAV_LINK}
+              title="현재 곡 / 가사 / 신청곡 대기열 오버레이를 종류별로 꾸미고 저장해요"
+            >
+              <Radio className="h-3.5 w-3.5" /> Overlay Studio
+            </button>
+          )}
+          {isOwner && (
+            <button
               onClick={() => navigate(`/books/${ownerId}/requests`)}
               className={NAV_LINK}
               title="시청자가 보낸 신청곡을 승인하고 대기열을 관리해요"

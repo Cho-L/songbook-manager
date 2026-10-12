@@ -20,6 +20,7 @@ alter default privileges in schema public grant execute on functions to anon, au
 `);
 await db.exec(fs.readFileSync(R + "schema.sql", "utf8"));
 await db.exec(fs.readFileSync(R + "migrations/20261011_song_requests.sql", "utf8"));
+await db.exec(fs.readFileSync(R + "migrations/20261012_request_queue_v2.sql", "utf8"));
 const BOOK = "00000000-0000-0000-0000-00000000000a";
 await db.exec(`insert into auth.users values ('${BOOK}','a@x','{}')`);
 const songIds = [];
@@ -108,7 +109,8 @@ ok("접수 설정 없는 노래책 → 403", res.status === 403);
 await db.exec(`update song_requests set status='approved' where title='곡2'`);
 res = await call("GET", { query: `?book=${BOOK}`, origin: null });
 body = await j(res);
-ok("공개 큐: 승인된 곡만, 허용 필드만", res.status === 200 && body.accepting === true && body.queue.every((q) => Object.keys(q).sort().join() === "artist,id,requesterName,status,title"), JSON.stringify(body));
+ok("공개 큐: 승인된 곡만, 허용 필드만", res.status === 200 && body.accepting === true && body.queue.every((q) => Object.keys(q).sort().join() === "artist,id,requesterName,songId,status,title"), JSON.stringify(body));
+ok("공개 큐: pendingSongIds 는 곡 id 문자열만", Array.isArray(body.pendingSongIds) && body.pendingSongIds.every((x) => typeof x === "string"));
 ok("공개 큐 응답에 해시/비밀 없음", !JSON.stringify(body).includes(keyRow) && !JSON.stringify(body).includes(SECRET));
 ok("공개 큐: book 파라미터 검증", (await call("GET", { query: "?book=zzz", origin: null })).status === 400);
 

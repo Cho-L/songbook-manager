@@ -37,6 +37,8 @@ export const DEFAULT_REQUEST_SETTINGS: RequestSettings = { accepting: false, max
 
 export interface PublicQueueItem {
   id: string;
+  /** 노래책의 곡 id (20261012 마이그레이션 적용 후부터 내려온다. 없으면 제목+가수로 비교) */
+  songId?: string | null;
   title: string;
   artist: string;
   requesterName: string;
@@ -45,6 +47,8 @@ export interface PublicQueueItem {
 export interface PublicQueue {
   accepting: boolean;
   pendingCount: number;
+  /** 확인 대기 중인 곡 id 목록 (신청자 정보 없음). 20261012 마이그레이션 전에는 비어 있다 */
+  pendingSongIds?: string[];
   queue: PublicQueueItem[];
 }
 
@@ -107,8 +111,8 @@ export async function makeRequesterKey(ip: string, bookId: string, salt: string)
 
 const TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
   pending: ["approved", "rejected"],
-  approved: ["playing", "rejected", "pending"],
-  playing: ["done", "approved"],
+  approved: ["playing", "rejected", "pending", "canceled"],
+  playing: ["done", "approved", "canceled"],
   done: [],
   rejected: ["pending"],
   canceled: [],
