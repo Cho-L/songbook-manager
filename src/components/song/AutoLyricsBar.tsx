@@ -2,6 +2,8 @@ import { useState } from "react";
 import type { useAutoLyrics } from "../../hooks/useAutoLyrics";
 import { describeStatus } from "../../hooks/useAutoLyrics";
 import { setAutoLyricsEnabled } from "../../lyrics/cache";
+import { LyricsCandidatePanel } from "./LyricsCandidatePanel";
+import { PronunciationPanel } from "./PronunciationPanel";
 import { SYNC_STEP_TENTHS, formatOffset, formatStep, readSyncStep, writeSyncStep } from "../../lyrics/warp";
 
 type Auto = ReturnType<typeof useAutoLyrics>;
@@ -27,6 +29,7 @@ const btnStyle = { borderColor: "rgba(128,128,128,0.35)", backgroundColor: "rgba
 export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: AutoLyricsBarProps) {
   const [tuning, setTuning] = useState(false);
   const [msg, setMsg] = useState("");
+  const [showMore, setShowMore] = useState(false);
   // 한 번 누를 때 움직일 간격(0.1~1.0초). 현재 누적 보정값(auto.warp.offset)과는 완전히 별개라서 간격을 바꿔도 보정값은 그대로다.
   const [stepTenths, setStepTenths] = useState(readSyncStep);
   const status = describeStatus({
@@ -67,21 +70,9 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
       ))}
 
       {status.kind === "needs-choice" && auto.entry?.options && (
-        <ul className="mt-2 flex flex-col gap-1.5" aria-label="가사 후보">
-          {auto.entry.options.map((o) => (
-            <li key={o.id}>
-              <button type="button" className={`${btn} w-full text-left`} style={btnStyle} onClick={() => void auto.choose(o.id)} data-testid="auto-lyrics-option">
-                {o.title} — {o.artist || "가수 미상"}
-                <span className="opacity-60">
-                  {" "}
-                  · {o.hasSynced ? "싱크 있음" : "가사만"}
-                  {o.duration ? ` · ${Math.floor(o.duration / 60)}:${String(Math.round(o.duration % 60)).padStart(2, "0")}` : ""} · 일치 {Math.round(o.confidence * 100)}%
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} ids={auto.entry.options.map((o) => o.id)} />
       )}
+      {showMore && status.kind !== "needs-choice" && <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} />}
 
       <div className="flex flex-wrap items-center gap-2 mt-2">
         {canTune && (
@@ -92,6 +83,20 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
         {showRetry && (
           <button type="button" className={btn} style={btnStyle} onClick={() => void auto.refresh()}>
             다시 찾기
+          </button>
+        )}
+        {(!auto.ownSynced || showManage) && status.kind !== "needs-choice" && status.kind !== "searching" && (
+          <button
+            type="button"
+            className={btn}
+            style={btnStyle}
+            data-testid="cand-toggle"
+            onClick={() => {
+              setShowMore((v) => !v);
+              if (!showMore && auto.candidates.length === 0) void auto.loadCandidates();
+            }}
+          >
+            {showMore ? "후보 닫기" : "다른 가사 후보 보기"}
           </button>
         )}
         {showManage && (
@@ -163,6 +168,8 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
           )}
         </div>
       )}
+
+      {(showManage || auto.canSave) && <PronunciationPanel auto={auto} />}
 
       {showManage && (
         <label className="flex items-center gap-2 mt-3 text-[12.5px] opacity-80 cursor-pointer min-h-[32px]">

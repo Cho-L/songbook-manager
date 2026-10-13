@@ -1,6 +1,7 @@
 import { normalizeArtist, splitArtists } from "../artist";
 import { hasHangul, hasLatin } from "../phonetic";
 import { normalizeTitle } from "../text";
+import { classifyHttpStatus } from "../errors";
 import type { AliasProvider, TitleArtistAliases } from "../types";
 
 /**
@@ -32,12 +33,13 @@ interface MbRecording {
 
 const EMPTY: TitleArtistAliases = { artists: [], titles: [] };
 
-function isLatinOnly(s: string): boolean {
-  return hasLatin(s) && !hasHangul(s);
+/** 가사 DB 검색에 쓸 수 있는 "원어/영문 표기"인가: 한글이 없고, 라틴 문자나 일본어(가나/한자)가 있어야 한다 */
+function isUsableAlias(s: string): boolean {
+  return !hasHangul(s) && (hasLatin(s) || /[\u3040-\u30FF\u4E00-\u9FFF]/.test(s));
 }
 function pushUnique(list: string[], seen: Set<string>, value: string | undefined, keyFn: (v: string) => string) {
   const v = (value ?? "").trim();
-  if (!v || !isLatinOnly(v)) return;
+  if (!v || !isUsableAlias(v)) return;
   const k = keyFn(v);
   if (!k || seen.has(k)) return;
   seen.add(k);
@@ -73,7 +75,7 @@ export class MusicBrainzAliasProvider implements AliasProvider {
     for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
     url.searchParams.set("fmt", "json");
     const res = await this.fetchImpl(url.toString(), { signal, headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`MusicBrainz ${res.status}`);
+    if (!res.ok) throw classifyHttpStatus("MusicBrainz", res.status);
     return (await res.json()) as T;
   }
 

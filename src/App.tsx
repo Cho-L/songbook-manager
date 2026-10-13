@@ -74,11 +74,11 @@ function BookRoutes() {
       />
       <Route
         path="/songs/:id"
-        element={<SongDetailPage songs={songs} onRemove={removeSong} />}
+        element={<SongDetailPage songs={songs} onRemove={removeSong} onUpdate={updateSong} />}
       />
       <Route
         path="/songs/:id/sing"
-        element={<SongModePage songs={songs} loading={loading} />}
+        element={<SongModePage songs={songs} loading={loading} onUpdate={updateSong} />}
       />
       <Route path="/request" element={<SongRequestPage songs={songs} loading={loading} />} />
       <Route

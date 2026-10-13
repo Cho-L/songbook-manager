@@ -1,10 +1,12 @@
+import { useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { confirmAsync, notify } from "../components/ui/feedback";
 import { DifficultyDots } from "../components/song/DifficultyDots";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { ChevronLeft, Mic, Pencil, Trash2, ListPlus } from "lucide-react";
-import type { Song } from "../types/song";
+import type { Song, SongFormInput } from "../types/song";
+import { songToInput } from "../utils/songInput";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useAuth } from "../hooks/useAuth";
@@ -18,9 +20,11 @@ import { getChromeCssVars, isLightBackground } from "../utils/color";
 interface SongDetailPageProps {
   songs: Song[];
   onRemove: (id: string) => void;
+  /** 가사 저장(자동 찾은 가사/발음 적용)에 쓴다 — 소유자만 호출된다 */
+  onUpdate?: (id: string, input: SongFormInput) => Promise<Song | null>;
 }
 
-export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
+export function SongDetailPage({ songs, onRemove, onUpdate }: SongDetailPageProps) {
   const { ownerId, id } = useParams();
   const navigate = useNavigate();
   const { profile: currentUser } = useAuth();
@@ -29,7 +33,15 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
   // 소유자에게만 "자동 가사/싱크" 관리 패널을 보여준다 (후보 선택, 다시 찾기, 결과 지우기, 켜기/끄기). 화면에 보이는 저장된 가사는 바꾸지 않는다.
   const isOwner = canManageBook(currentUser, ownerId);
   const isOwnerForAuto = isOwner && Boolean(song);
-  const auto = useAutoLyrics(isOwnerForAuto ? song : undefined);
+  const saveLyrics = useCallback(
+    async (lyrics: string) => {
+      if (!song || !onUpdate) throw new Error("저장할 수 없어요");
+      const saved = await onUpdate(song.id, songToInput(song, lyrics));
+      if (!saved) throw new Error("곡을 찾지 못했어요");
+    },
+    [song, onUpdate]
+  );
+  const auto = useAutoLyrics(isOwnerForAuto ? song : undefined, { save: isOwner && onUpdate ? saveLyrics : undefined });
   const { playlists } = usePlaylists(isOwner ? ownerId : undefined);
   const { design } = useBookDesign(ownerId);
   const bookStyle = {
@@ -294,6 +306,10 @@ export function SongDetailPage({ songs, onRemove }: SongDetailPageProps) {
                 {song.lyrics.split(/\r?\n/).map((line, i) =>
                   line === "" ? (
                     <div key={i} className="h-4" aria-hidden="true" />
+                  ) : /^\{(발음|번역)\}/.test(line) ? (
+                    <p key={i} className="break-words text-[13px] opacity-60 -mt-1.5" data-testid="detail-pron">
+                      {line.replace(/^\{(발음|번역)\}[ \t]?/, "")}
+                    </p>
                   ) : (
                     <p key={i} className="break-words">
                       <LinkifiedText text={line} />

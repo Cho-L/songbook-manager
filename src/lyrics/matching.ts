@@ -19,9 +19,9 @@ export function scoreCandidate(song: { title: string; artist: string }, c: Lyric
   let artistSimilarity = song.artist.trim() ? matchArtists(song.artist, c.artist).score : 0.5;
   // 외부 메타데이터(MusicBrainz)가 알려 준 다른 언어 표기(꽃길 ↔ Flower Way, 김세정 ↔ Kim Sejeong)도 같은 기준으로 비교한다.
   // 별칭 제목은 "그 가수의 같은 곡"으로 확인된 표기일 때만 들어오므로, 후보의 가수까지 맞아야 인정한다.
-  if (aliases && song.artist.trim()) {
+  if (aliases && (song.artist.trim() || aliases.trusted)) {
     for (const a of aliases.artists) artistSimilarity = Math.max(artistSimilarity, matchArtists(a, c.artist).score);
-    if (artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST) {
+    if (artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST || (aliases.trusted && !song.artist.trim())) {
       for (const t of aliases.titles) titleSimilarity = Math.max(titleSimilarity, titleSimilarityScore(t, c.title));
     }
   }
@@ -58,8 +58,28 @@ export function rankCandidates(song: { title: string; artist: string }, candidat
 export function isCrossScriptTitleChoice(song: { title: string }, c: ScoredCandidate): boolean {
   const a = song.title;
   const b = c.title;
-  const crossScript = (hasHangul(a) && !hasLatin(a) && hasLatin(b) && !hasHangul(b)) || (hasHangul(b) && !hasLatin(b) && hasLatin(a) && !hasHangul(a));
+  const isKana = (s: string) => /[\u3040-\u30FF\u4E00-\u9FFF]/.test(s);
+  const family = (s: string) => (hasHangul(s) ? "ko" : isKana(s) ? "ja" : hasLatin(s) ? "en" : "other");
+  const fa = family(a);
+  const fb = family(b);
+  // 한글 제목 ↔ 영문/일본어(원어) 제목처럼 문자 체계가 달라 글자로는 비교할 수 없는 경우
+  const crossScript = fa !== fb && fa !== "other" && fb !== "other" && (fa === "ko" || fb === "ko");
   return crossScript && c.artistSimilarity >= 0.9 && c.titleSimilarity < 0.5 && !c.versionMismatch;
+}
+
+/** 같은 곡이 LRCLIB 에 길이만 다르게 여러 번 올라와 있는 경우를 하나로 합친다 (싱크 가사가 있는 쪽을 남긴다) */
+export function dedupeCandidates<T extends { title: string; artist: string; syncedLyrics?: string; confidence?: number }>(list: T[]): T[] {
+  const seen = new Map<string, T>();
+  const order: string[] = [];
+  for (const c of list) {
+    const key = `${normalizeText(c.title)}|${normalizeText(c.artist)}`;
+    const cur = seen.get(key);
+    if (!cur) {
+      seen.set(key, c);
+      order.push(key);
+    } else if (!cur.syncedLyrics && c.syncedLyrics) seen.set(key, c);
+  }
+  return order.map((k) => seen.get(k) as T);
 }
 
 export function summarize(c: ScoredCandidate): CandidateSummary {

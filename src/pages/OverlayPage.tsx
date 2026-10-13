@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useClockedLive } from "../hooks/useClockedLive";
 import { OverlayView } from "../components/overlay/OverlayView";
 import { useOverlayConfig } from "../hooks/useOverlayConfig";
 import { constrainOverlay } from "../utils/overlayStudio";
@@ -67,7 +68,7 @@ export function OverlayPage({ kind }: { kind?: "song" | "lyrics" } = {}) {
   const [size, setSize] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
   const liveRef = useRef<LiveState | null>(live);
   // 마지막으로 무언가를 "받은" 시각 — 발신자 시계가 아니라 내 시계 기준이라 기기 간 시계 차이의 영향을 받지 않는다
-  const recvAtRef = useRef<number>(Date.now());
+  const recvAtRef = useRef<number>(live ? live.ts : Date.now());
   const ackedRef = useRef<Set<string>>(new Set());
 
   // 방송 캡처에 앱 배경색이 섞이지 않도록 문서 배경을 투명하게, 스크롤은 막는다 (페이지를 떠나면 원복)
@@ -146,7 +147,9 @@ export function OverlayPage({ kind }: { kind?: "song" | "lyrics" } = {}) {
   }, []);
 
   const matches = live !== null && (!bookFilter || live.bookId === bookFilter);
-  const active = matches && !stale ? live : null;
+  const activeRaw = matches && !stale ? live : null;
+  // 재생 위치가 오면 줄 전환을 OBS 쪽에서 계산한다 (없으면 받은 lineIndex 그대로)
+  const active = useClockedLive(activeRaw, recvAtRef);
 
   const inset = box ? box.padding + box.borderW : 0;
   const view = <OverlayView state={active} status={everConnected ? "lost" : "waiting"} settings={settings} width={Math.max(1, size.w - 2 * inset)} height={Math.max(1, size.h - 2 * inset)} />;

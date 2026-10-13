@@ -11,6 +11,7 @@ export function normalizeText(s: string): string {
     .replace(/\p{M}/gu, "")
     .normalize("NFKC")
     .toLowerCase()
+    .replace(/[\u30A1-\u30F6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60)) // 가타카나 → 히라가나 (アイ ↔ あい)
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 

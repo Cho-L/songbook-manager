@@ -13,6 +13,7 @@ import { getChromeCssVars } from "../utils/color";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
+import { useLyricOffset } from "../hooks/useLyricOffset";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
@@ -130,13 +131,16 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
     ? `concertmode-yt-player-${song.id}-${restartKey}`
     : "concertmode-yt-player";
   // 기존 SongMode와 동일한 IFrame Player 훅 재사용. onEnded로 다음 곡 자동 진행(연속 공연).
-  const { currentTime, duration, playbackError } = useYouTubePlayer(
+  const { currentTime, duration, playbackError, phase, seekCount, getNow, getRate } = useYouTubePlayer(
     playerContainerId,
     song?.youtubeVideoId,
     Boolean(song?.youtubeVideoId),
     goNext
   );
-  const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
+  // SongMode 에서 맞춰 둔 곡별 가사 싱크 보정값을 그대로 쓴다 (공연 화면에는 조절 버튼이 없다)
+  const lyricOffset = useLyricOffset(song?.id);
+  const offsetSec = auto.applied ? 0 : lyricOffset.offset;
+  const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime - offsetSec) : -1;
 
   useAccountLiveKey(ownerId, Boolean(currentUser && currentUser.id === ownerId));
 
@@ -148,20 +152,27 @@ export function ConcertModePage({ songs, loading }: ConcertModePageProps) {
       return { bookId: ownerId, mode: "finished", lines: [], lineIndex: -1, synced: false, index: total, total, queue };
     }
     if (!song) return null;
-    const { lines, lineIndex } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex);
+    const { lines, lineIndex, pron, times } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex, offsetSec);
     return {
       bookId: ownerId,
       mode: "concert",
       song: toLiveSong(song),
       lines,
+      ...(pron ? { pron } : {}),
       lineIndex,
       synced: isSynced,
+      ...(phase !== "idle" ? { playback: phase === "playing" ? ("playing" as const) : phase === "buffering" ? ("waiting" as const) : ("paused" as const) } : {}),
+      ...(isSynced ? { times, off: offsetSec, seek: seekCount } : {}),
       index,
       total,
       queue,
     };
-  }, [ownerId, total, finished, song, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, index]);
-  useLivePublisher(liveState);
+  }, [ownerId, total, finished, song, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, index, offsetSec, phase, seekCount]);
+  const liveClock = useCallback((): { pos: number; rate: number } | null => {
+    const t = getNow();
+    return t === undefined ? null : { pos: t, rate: getRate() };
+  }, [getNow, getRate]);
+  useLivePublisher(liveState, liveClock);
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
   useEffect(() => {

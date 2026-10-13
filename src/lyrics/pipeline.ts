@@ -1,10 +1,10 @@
-import { MEDIUM_CONFIDENCE, isAutoAccept, isCrossScriptTitleChoice, rankCandidates, summarize } from "./matching";
+import { MEDIUM_CONFIDENCE, dedupeCandidates, isAutoAccept, isCrossScriptTitleChoice, rankCandidates, summarize } from "./matching";
 import { searchCandidates } from "./searchPlan";
 import { formatLrc } from "./lrc";
 import { hashText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
 import { applyWarp } from "./warp";
-import { IDENTITY_WARP, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
+import { IDENTITY_WARP, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
 
 /**
  * 자동 가사 검색 + 싱크 파이프라인 (화면/저장소와 무관한 순수 로직).
@@ -21,11 +21,16 @@ export interface ResolveInput {
   title: string;
   artist: string;
   ownLyrics: string;
+  /** 곡에 입력했거나 기본 사전에 있는 다른 언어 표기 (검색과 점수 계산에 쓴다) */
+  titleAliases?: string[];
+  artistAliases?: string[];
 }
 
 export interface ResolveOptions {
   /** 사용자가 후보 목록에서 직접 고른 곡 — 신뢰도 기준을 건너뛴다 */
   candidateId?: string;
+  /** 이전 검색에서 이미 받아 둔 후보(본문 포함). candidateId 가 여기 있으면 다시 검색하지 않는다 */
+  pool?: ScoredCandidate[];
   synchronizer?: LyricsSynchronizer;
   /** 한글 곡이 가사 DB 에 영문 표기로만 있을 때 확인된 별칭을 찾아 주는 곳 (없으면 확장 검색의 별칭 단계는 건너뛴다) */
   aliasProvider?: AliasProvider;
@@ -44,13 +49,40 @@ export function isEntryValid(entry: SyncEntry, input: { title: string; artist: s
 }
 
 export async function resolveLyrics(input: ResolveInput, provider: LyricsProvider, opts: ResolveOptions = {}): Promise<SyncEntry> {
+  return (await resolveLyricsDetailed(input, provider, opts)).entry;
+}
+
+/** resolveLyrics + 이번에 받은 후보 전체(본문 포함, 메모리 전용). 후보 미리보기/선택이 같은 데이터를 다시 받지 않고 쓰게 한다 */
+export async function resolveLyricsDetailed(
+  input: ResolveInput,
+  provider: LyricsProvider,
+  opts: ResolveOptions = {}
+): Promise<{ entry: SyncEntry; pool: ScoredCandidate[] }> {
   const now = opts.now ?? Date.now;
   const synchronizer = opts.synchronizer ?? new ProviderLyricsSynchronizer();
   const base = { v: 1 as const, songId: input.songId, ...entryKeys(input), createdAt: now(), lines: [], warps: {}, warnings: [] as string[] };
 
-  // 단계적 검색(엄격 → 느슨, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
-  const { candidates, aliases } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
-  const ranked = rankCandidates(input, candidates, aliases);
+  // 후보 선택: 이미 받아 둔 후보가 있으면 그대로 쓰고 다시 검색하지 않는다 (검색 횟수 절약 + 같은 후보가 다시 안 나오는 문제 방지)
+  let ranked: ScoredCandidate[];
+  if (opts.candidateId && opts.pool?.some((c) => c.id === opts.candidateId)) {
+    ranked = opts.pool;
+  } else {
+    // 단계적 검색(엄격 → 느슨, 별칭, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
+    const { candidates, aliases, budgetExhausted } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
+    ranked = rankCandidates(input, candidates, aliases);
+    if (budgetExhausted) base.warnings.push("검색 횟수 상한에 도달해 일부 검색은 건너뛰었어요");
+  }
+  const entry = await decide(input, ranked, opts, base, synchronizer);
+  return { entry, pool: ranked };
+}
+
+async function decide(
+  input: ResolveInput,
+  ranked: ScoredCandidate[],
+  opts: ResolveOptions,
+  base: { v: 1; songId: string; titleKey: string; artistKey: string; lyricsHash: string; createdAt: number; lines: never[]; warps: Record<string, never>; warnings: string[] },
+  synchronizer: LyricsSynchronizer
+): Promise<SyncEntry> {
   if (ranked.length === 0) return { ...base, outcome: "not-found" };
 
   const hasArtist = Boolean(input.artist.trim());
@@ -66,13 +98,13 @@ export async function resolveLyrics(input: ResolveInput, provider: LyricsProvide
       if (medium.length === 0 && crossScript.length === 0) {
         return { ...base, outcome: "not-found", confidence: top.confidence, warnings: ["비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
       }
-      const options = [...medium.slice(0, 5), ...crossScript.slice(0, 5)];
+      const options = dedupeCandidates([...medium.slice(0, 5), ...crossScript]).slice(0, 8);
       return {
         ...base,
         outcome: "needs-choice",
         options: options.map(summarize),
         confidence: options[0].confidence,
-        warnings: crossScript.length > 0 ? ["제목 표기가 달라서(한글↔영문) 자동으로 고르지 못했어요. 맞는 곡을 골라 주세요"] : [],
+        warnings: [...base.warnings, ...(crossScript.length > 0 ? ["제목 표기가 달라서(한글↔원어/영문) 자동으로 고르지 못했어요. 가수는 같은 곡들이에요 — 미리보기로 가사를 확인하고 맞는 곡을 골라 주세요"] : [])],
       };
     }
     // 점수가 거의 같으면(5% 이내) 싱크 가사가 있는 후보를 우선 (자동 선택 조건을 만족하는 것 중에서)
@@ -142,4 +174,10 @@ export function buildResolvedLyrics(entry: SyncEntry, videoId: string | undefine
   if (entry.outcome === "lyrics-only") return entry.plainLyrics ?? ownLyrics;
   const warp = getWarp(entry, videoId);
   return formatLrc(entry.lines, (t) => applyWarp(t, warp));
+}
+
+/** 후보 목록만 필요할 때(미리보기/선택 UI): 검색 → 점수 → 중복 정리. 자동 선택은 하지 않는다 */
+export async function searchRanked(input: ResolveInput, provider: LyricsProvider, opts: { aliasProvider?: AliasProvider; signal?: AbortSignal } = {}): Promise<ScoredCandidate[]> {
+  const { candidates, aliases } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
+  return dedupeCandidates(rankCandidates(input, candidates, aliases));
 }

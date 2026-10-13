@@ -1020,6 +1020,7 @@ export function OverlaySettingsPage() {
               </div>
               <div className="mt-2">
                 <Toggle label="현재 가사를 강조색으로" checked={settings.lyricAccent} onChange={(v) => update("lyricAccent", v)} />
+                <Toggle label="한글 발음 줄 (가사에 발음이 있을 때)" checked={settings.lyricsPron === "on"} onChange={(v) => update("lyricsPron", v ? "on" : "off")} />
               </div>
               <p className="text-[11.5px] mt-1.5" style={muted}>
                 곡이 바뀔 때는 화면이 잠깐 사라졌다 새 곡으로 나타나요 (애니메이션 &quot;부드럽게&quot;일 때).

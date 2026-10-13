@@ -57,6 +57,8 @@ export interface LyricsProvider {
 export interface TitleArtistAliases {
   artists: string[];
   titles: string[];
+  /** 사용자가 직접 입력했거나 기본 사전에 있는 표기. 가수 정보가 없는 곡에서도 제목 별칭으로 인정한다 */
+  trusted?: boolean;
 }
 
 export interface AliasProvider {

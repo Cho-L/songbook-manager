@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { notify } from "../components/ui/feedback";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
@@ -16,7 +16,9 @@ import {
   GripHorizontal,
   RotateCcw,
 } from "lucide-react";
-import type { Song } from "../types/song";
+import type { Song, SongFormInput } from "../types/song";
+import { songToInput } from "../utils/songInput";
+import { canManageBook } from "../utils/permissions";
 import { parseLyrics, hasTimestamps, findCurrentLyricIndex } from "../utils/lyrics";
 import { transposeChordsText } from "../utils/transpose";
 import { useYouTubePlayer } from "../hooks/useYouTubePlayer";
@@ -27,12 +29,14 @@ import { useFavorites } from "../hooks/useFavorites";
 import { usePlaylistSongIds } from "../hooks/usePlaylists";
 import { useWakeLock } from "../hooks/useWakeLock";
 import { usePreferences } from "../hooks/usePreferences";
-import { getChromeTones } from "../utils/color";
+import { getChromeTones, isLightBackground } from "../utils/color";
 import { FavoriteButton } from "../components/song/FavoriteButton";
 import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
 import { useRequesterName } from "../hooks/useRequesterName";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
+import { formatOffsetSec } from "../lyrics/lyricOffset";
+import { useLyricOffset } from "../hooks/useLyricOffset";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
 import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from "../utils/liveBroadcast";
@@ -40,6 +44,8 @@ import { buildLiveLyrics, buildLiveQueue, toLiveSong, type LiveStateInput } from
 interface SongModePageProps {
   songs: Song[];
   loading?: boolean;
+  /** 가사 저장(후보 적용) — 노래책 소유자만 쓴다 */
+  onUpdate?: (id: string, input: SongFormInput) => Promise<Song | null>;
 }
 
 // index 0~3 = sm/md/lg/xl, Settings 페이지의 FontSize와 순서를 맞춘다.
@@ -58,7 +64,7 @@ function clampIndex(i: number): number {
   return Math.max(0, Math.min(FONT_SIZE_ORDER.length - 1, i));
 }
 
-export function SongModePage({ songs, loading }: SongModePageProps) {
+export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
   const { ownerId, id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -66,9 +72,18 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const requestId = searchParams.get("request");
   const rawSong = songs.find((s) => s.id === id);
   // 저장된 싱크 가사가 없으면 가사를 자동으로 찾아 싱크한 결과를 "song"으로 쓴다 (저장된 데이터는 바뀌지 않고, 이후 흐름은 기존 LRC 경로 그대로)
-  const auto = useAutoLyrics(rawSong);
-  const song = auto.song;
   const { profile: currentUser } = useAuth();
+  const canSaveLyrics = canManageBook(currentUser, ownerId) && Boolean(onUpdate);
+  const saveLyrics = useCallback(
+    async (lyrics: string) => {
+      if (!rawSong || !onUpdate) throw new Error("저장할 수 없어요");
+      const saved = await onUpdate(rawSong.id, songToInput(rawSong, lyrics));
+      if (!saved) throw new Error("곡을 찾지 못했어요");
+    },
+    [rawSong, onUpdate]
+  );
+  const auto = useAutoLyrics(rawSong, { save: canSaveLyrics ? saveLyrics : undefined });
+  const song = auto.song;
   const { favoriteIds, toggle: toggleFavorite } = useFavorites(currentUser?.id);
   const { songIds: playlistSongIds } = usePlaylistSongIds(playlistId);
   const wakeLock = useWakeLock();
@@ -82,6 +97,25 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const [transposeSteps, setTransposeSteps] = useState(0);
 
   const lyricLines = useMemo(() => parseLyrics(song?.lyrics), [song?.lyrics]);
+  // 표시 방식: 원문만 / 원문 + 한글 발음 (이 브라우저에 기억). 발음이 없는 곡에서는 버튼도 나타나지 않는다.
+  const hasPron = lyricLines.some((l) => l.pron);
+  const [showPron, setShowPron] = useState(() => {
+    try {
+      return localStorage.getItem("songbook:show-pron") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  function togglePron() {
+    setShowPron((v) => {
+      try {
+        localStorage.setItem("songbook:show-pron", v ? "0" : "1");
+      } catch {
+        // 저장소를 못 써도 이번 화면에서는 바뀐다
+      }
+      return !v;
+    });
+  }
   const isSynced = hasTimestamps(lyricLines) && Boolean(song?.youtubeVideoId);
   const isInPlaylist = Boolean(playlistId) && playlistSongIds.length > 0;
 
@@ -122,13 +156,16 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
   const playerContainerId = song ? `songmode-yt-player-${song.id}` : "songmode-yt-player";
   // 영상이 있는 곡은 항상 IFrame Player API를 쓴다 — 재생 가능 여부(onError)를
   // 감지하려면 정적 iframe이 아니라 이 방식이어야 한다. 가사 싱크/연속재생 여부와 무관.
-  const { currentTime, duration, playbackError } = useYouTubePlayer(
+  const { currentTime, duration, playbackError, phase, seekCount, getNow, getRate } = useYouTubePlayer(
     playerContainerId,
     song?.youtubeVideoId,
     Boolean(song?.youtubeVideoId),
     goToNextInPlaylist
   );
-  const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime) : -1;
+  // 곡별 가사 싱크 보정(이 브라우저에 저장). 자동 찾은 가사는 기존 "싱크 보정(warp)"이 이미 시간표에 반영돼 있으니 중복 적용하지 않는다.
+  const lyricOffset = useLyricOffset(song?.id);
+  const offsetSec = auto.applied ? 0 : lyricOffset.offset;
+  const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime - offsetSec) : -1;
 
   const requesterName = useRequesterName(requestId, song?.id);
 
@@ -137,22 +174,37 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
     if (!song || !ownerId) return null;
     const idx = playlistId ? playlistSongIds.indexOf(song.id) : -1;
     const inPlaylist = idx >= 0;
-    const { lines, lineIndex } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex);
+    const { lines, lineIndex, pron, times } = buildLiveLyrics(isSynced ? lyricLines : [], currentLineIndex, offsetSec);
     return {
       bookId: ownerId,
       mode: "song",
       song: toLiveSong(song, requesterName),
       lines,
+      ...(pron ? { pron } : {}),
       lineIndex,
       synced: isSynced,
+      // 실제 플레이어가 알려 준 상태만 보낸다 (이벤트가 아직 없으면 보내지 않는다 → 오버레이는 상태 표시 생략)
+      ...(phase !== "idle" ? { playback: phase === "playing" ? ("playing" as const) : phase === "buffering" ? ("waiting" as const) : ("paused" as const) } : {}),
+      ...(isSynced ? { times, off: offsetSec, seek: seekCount } : {}),
       index: inPlaylist ? idx : 0,
       total: inPlaylist ? playlistSongIds.length : 0,
       queue: inPlaylist ? buildLiveQueue(playlistSongIds, songs) : [],
     };
-  }, [song, ownerId, playlistId, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, requesterName]);
-  useLivePublisher(liveState);
+  }, [song, ownerId, playlistId, playlistSongIds, songs, lyricLines, isSynced, currentLineIndex, requesterName, offsetSec, phase, seekCount]);
+  const liveClock = useCallback((): { pos: number; rate: number } | null => {
+    const t = getNow();
+    return t === undefined ? null : { pos: t, rate: getRate() };
+  }, [getNow, getRate]);
+  useLivePublisher(liveState, liveClock);
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
+  // 노래방 표시: 바로 다음에 부를 줄(빈 줄 건너뜀) / 밝은 배경에서는 더 진한 강조색
+  const nextLineIndex = useMemo(() => {
+    if (!isSynced) return -1;
+    for (let i = currentLineIndex + 1; i < lyricLines.length; i++) if (lyricLines[i].text.trim()) return i;
+    return -1;
+  }, [isSynced, currentLineIndex, lyricLines]);
+  const lightBg = isLightBackground(preferences.backgroundColor);
 
   // 플로팅 플레이어: 원래 영상 자리(slot)가 화면에서 벗어나면, 같은 플레이어 요소를 CSS로 화면 구석에 띄운다.
   // iframe을 DOM에서 옮기거나 복제하지 않으므로 재생 위치/음소거/재생 상태가 그대로 유지되고 영상이 두 번 재생되지 않는다.
@@ -282,6 +334,46 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
             <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
+
+        {isSynced && !auto.applied && (
+          <div
+            className={`flex items-center gap-1 rounded-full border px-1 py-1 ${tones.chipBg} ${tones.chipBorder}`}
+            role="group"
+            aria-label="가사 싱크 보정"
+            title="가사가 영상보다 빠르거나 느리면 맞춰 주세요 (이 곡의 보정값은 이 브라우저에 저장돼요)"
+            data-testid="lyric-offset"
+          >
+            <button type="button" onClick={() => lyricOffset.nudge(-1)} className={`px-2.5 py-1.5 text-[12px] ${tones.base}`} aria-label="가사 0.5초 빠르게" data-testid="offset-minus">
+              −0.5
+            </button>
+            <button
+              type="button"
+              onClick={lyricOffset.reset}
+              className={`px-1.5 py-1.5 text-[12px] min-w-[3.6rem] text-center ${lyricOffset.offset === 0 ? tones.muted : "text-amber-500 font-semibold"}`}
+              aria-label="보정 초기화 (0초)"
+              title="눌러서 0초로 초기화"
+              data-testid="offset-value"
+            >
+              {formatOffsetSec(lyricOffset.offset)}
+            </button>
+            <button type="button" onClick={() => lyricOffset.nudge(1)} className={`px-2.5 py-1.5 text-[12px] ${tones.base}`} aria-label="가사 0.5초 늦게" data-testid="offset-plus">
+              +0.5
+            </button>
+          </div>
+        )}
+
+        {hasPron && (
+          <button
+            type="button"
+            onClick={togglePron}
+            aria-pressed={showPron}
+            data-testid="pron-toggle"
+            title={showPron ? "원문만 보기" : "원문 + 한글 발음 보기"}
+            className={`text-[12px] px-3 py-1.5 rounded-full border ${showPron ? `${tones.chipBg} ${tones.chipBorder} ${tones.base}` : `${tones.muted} border-transparent`}`}
+          >
+            발음
+          </button>
+        )}
 
         {song.chords && (
           <button
@@ -533,14 +625,19 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
               }
               const isCurrent = isSynced && i === currentLineIndex;
               const isPast = isSynced && currentLineIndex >= 0 && i < currentLineIndex;
+              const isNext = isSynced && i === nextLineIndex;
+              const role = isCurrent ? "current" : isNext ? "next" : isPast ? "past" : "other";
               return (
                 <p
                   key={i}
                   ref={(el) => {
                     lineRefs.current[i] = el;
                   }}
+                  data-testid="lyric-line"
+                  data-role={role}
+                  aria-current={isCurrent ? "true" : undefined}
                   className={`break-words transition-all duration-300 ${
-                    isCurrent ? "text-amber-500 font-semibold scale-[1.03] origin-left" : ""
+                    isCurrent ? `${lightBg ? "text-amber-700" : "text-amber-500"} font-semibold scale-[1.03] origin-left` : ""
                   }`}
                   style={
                     isCurrent
@@ -548,10 +645,16 @@ export function SongModePage({ songs, loading }: SongModePageProps) {
                       : // 지난/다음 줄도 사용자가 고른 lyricsColor를 그대로 쓰고
                         // 투명도만 다르게 줘서 강조 대비를 만든다 — 하드코딩된
                         // 흰색으로 덮어쓰지 않는다 (곡마다 색이 달라지던 버그의 원인).
-                        { color: preferences.lyricsColor, opacity: isPast ? 0.45 : isSynced ? 0.75 : 1 }
+                        // 지난 줄은 가장 흐리게, 바로 다음 줄은 또렷하게, 나머지는 중간.
+                        { color: preferences.lyricsColor, opacity: isPast ? 0.4 : isNext ? 0.95 : isSynced ? 0.6 : 1 }
                   }
                 >
                   <LinkifiedText text={line.text} />
+                  {showPron && line.pron && (
+                    <span data-testid="line-pron" className={`block text-[0.72em] leading-snug font-normal ${isCurrent ? "opacity-95" : "opacity-70"}`}>
+                      {line.pron}
+                    </span>
+                  )}
                 </p>
               );
             })}

@@ -395,6 +395,7 @@ function OverlayControls({ kind, s, onChange, onPreset, field }: { kind: "song" 
           {kind === "song" && <Toggle label="신청자" checked={s.showRequester} onChange={(v) => onChange({ showRequester: v })} testId="o-requester" />}
           {kind === "song" && <Toggle label="다음 곡" checked={s.showNext} onChange={(v) => onChange({ showNext: v })} testId="o-next" />}
           {kind === "lyrics" && <Toggle label="현재 가사 강조색" checked={s.lyricAccent} onChange={(v) => onChange({ lyricAccent: v })} testId="o-lyricaccent" />}
+          {kind === "lyrics" && <Toggle label="한글 발음 줄 (있을 때)" checked={s.lyricsPron === "on"} onChange={(v) => onChange({ lyricsPron: v ? "on" : "off" })} testId="o-lyricpron" />}
         </div>
         {kind === "lyrics" && (
           <div className="mt-2">

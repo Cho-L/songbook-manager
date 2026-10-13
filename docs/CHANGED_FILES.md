@@ -81,3 +81,14 @@
 - supabase/migrations
 
 > 원본에는 Git 정보가 없어 diff 는 폴더 비교(`diff -rq`) 기준입니다.
+
+
+## Phase 3.1 (가사 검색·적용·한글 발음)
+신규: `src/lyrics/errors.ts`, `src/lyrics/apply.ts`, `src/lyrics/pronunciation/{hangul,kana,english,index}.ts`, `src/components/song/{LyricsCandidatePanel,PronunciationPanel}.tsx`, `src/utils/songInput.ts`, `tests/lyrics-phase31.test.ts`, `docs/lyrics-phase31.md`
+수정: `src/lyrics/{searchPlan,pipeline,matching,text,artist,types}.ts`, `src/lyrics/providers/{lrclib,musicbrainz}.ts`, `src/hooks/useAutoLyrics.ts`, `src/components/song/AutoLyricsBar.tsx`, `src/utils/{lyrics,liveBroadcast}.ts`, `src/types/overlay.ts`, `src/components/overlay/OverlayView.tsx`, `src/pages/{SongModePage,SongDetailPage,ConcertModePage,OverlayStudioPage,OverlaySettingsPage}.tsx`, `src/App.tsx`, `package.json`(+`cmu-pronouncing-dictionary`)
+
+
+## Phase 3.2 (실시간 가사 싱크 · 노래방 UX)
+신규: `src/lyrics/lyricOffset.ts`, `src/hooks/useLyricOffset.ts`, `src/utils/liveClock.ts`, `src/hooks/useClockedLive.ts`, `tests/liveSync.test.ts`, `docs/lyrics-sync-phase32.md`
+수정: `src/hooks/useYouTubePlayer.ts`, `src/hooks/useLivePublisher.ts`, `src/utils/liveBroadcast.ts`, `src/pages/{SongModePage,ConcertModePage,OverlayPage}.tsx`, `tests/lyrics-phase31.test.ts`
+DB/스키마 변경: 없음

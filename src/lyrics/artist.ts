@@ -13,7 +13,10 @@ export function foldDiacritics(s: string): string {
 
 /** 비교용 단일 이름 정규화: 악센트 제거, 소문자, 글자/숫자만 */
 export function normalizeArtist(name: string): string {
-  return foldDiacritics(name).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  return foldDiacritics(name)
+    .toLowerCase()
+    .replace(/[\u30A1-\u30F6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60)) // 가타카나 → 히라가나
+    .replace(/[^\p{L}\p{N}]+/gu, "");
 }
 
 // 구분자: , ; & + / × ＆ 、 · , 단어 and / with / feat / ft / featuring / vs, 공백으로 둘러싸인 x · 와 · 과

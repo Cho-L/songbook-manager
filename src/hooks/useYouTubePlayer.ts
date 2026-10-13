@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // YouTube IFrame Player API의 최소 타입만 선언 (공식 @types 패키지를 새로 추가하지 않기 위함)
 interface YTPlayer {
   getCurrentTime(): number;
   /** 영상 길이(초). 메타데이터가 아직 없으면 0 또는 undefined */
   getDuration?(): number;
+  /** 재생 속도 (IFrame API 제공). 없으면 1배속으로 본다 */
+  getPlaybackRate?(): number;
   destroy(): void;
 }
 interface YTPlayerEvent {
@@ -55,7 +57,16 @@ function loadYouTubeIframeAPI(): Promise<void> {
 
 const YT_STATE_ENDED = 0;
 const YT_STATE_PLAYING = 1;
+const YT_STATE_PAUSED = 2;
 const YT_STATE_BUFFERING = 3;
+/** 재생 중 시간 읽기 간격 / 재생 중이 아닐 때(일시정지 중 탐색 감지용) 간격 */
+const POLL_PLAYING_MS = 200;
+const POLL_IDLE_MS = 1000;
+/** 읽은 시간이 "정상 진행"에서 이만큼(초) 벗어나면 사용자가 탐색(seek)한 것으로 본다 */
+const SEEK_JUMP_SEC = 1.5;
+const SEEK_JUMP_IDLE_SEC = 0.75;
+
+export type PlayerPhase = "idle" | "playing" | "paused" | "buffering" | "ended";
 const BUFFERING_HANG_TIMEOUT_MS = 8000;
 
 // https://developers.google.com/youtube/iframe_api_reference#onError
@@ -69,6 +80,14 @@ export interface YouTubePlayerState {
   duration: number;
   /** true면 이 영상은 임베드 재생이 막혀있거나 재생할 수 없는 상태 */
   playbackError: boolean;
+  /** 플레이어가 알려 준 재생 상태 (YouTube onStateChange 기준). 아직 아무 이벤트가 없으면 "idle" */
+  phase: PlayerPhase;
+  /** 사용자가 영상을 탐색(seek)할 때마다 1씩 증가 — 가사 위치/방송 상태를 즉시 다시 계산하는 신호 */
+  seekCount: number;
+  /** 지금 이 순간의 재생 시간(초). 플레이어가 없으면 undefined — 방송으로 보내는 시각 기준에 쓴다 */
+  getNow: () => number | undefined;
+  /** 재생 속도 (알 수 없으면 1) */
+  getRate: () => number;
 }
 
 /**
@@ -102,6 +121,9 @@ export function useYouTubePlayer(
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState(false);
+  const [phase, setPhase] = useState<PlayerPhase>("idle");
+  const [seekCount, setSeekCount] = useState(0);
+  const lastReadRef = useRef<{ t: number; wall: number; playing: boolean } | null>(null);
   const onEndedRef = useRef(onEnded);
   onEndedRef.current = onEnded;
 
@@ -112,6 +134,9 @@ export function useYouTubePlayer(
     // 곡(영상)이 바뀌면 이전 곡의 재생 시간을 버린다 — 안 그러면 새 곡 가사가 이전 곡 시간 기준으로 계산된다.
     setCurrentTime(0);
     setDuration(0);
+    setPhase("idle");
+    setSeekCount(0);
+    lastReadRef.current = null;
 
     function clearBufferingTimeout() {
       if (bufferingTimeoutRef.current !== null) {
@@ -168,19 +193,30 @@ export function useYouTubePlayer(
             const d = playerRef.current?.getDuration?.();
             if (typeof d === "number" && d > 0) setDuration(d);
 
-            if (e.data === YT_STATE_PLAYING) {
-              intervalRef.current = window.setInterval(() => {
-                const t = playerRef.current?.getCurrentTime();
-                if (typeof t === "number") setCurrentTime(t);
-              }, 300);
-            } else {
-              // 일시정지/버퍼링(=seek 중)/종료 등: 그 순간 시간을 한 번만 반영
+            const playing = e.data === YT_STATE_PLAYING;
+            setPhase(
+              playing ? "playing" : e.data === YT_STATE_PAUSED ? "paused" : e.data === YT_STATE_BUFFERING ? "buffering" : e.data === YT_STATE_ENDED ? "ended" : "idle"
+            );
+            // 재생 중엔 빠르게, 아닐 땐 느리게 읽는다 (일시정지 중 탐색이 이벤트 없이 일어나도 1초 안에 반영)
+            const read = () => {
               const t = playerRef.current?.getCurrentTime();
-              if (typeof t === "number") setCurrentTime(t);
-              if (e.data === YT_STATE_ENDED) {
-                onEndedRef.current?.();
+              if (typeof t !== "number") return;
+              const nowWall = Date.now();
+              const last = lastReadRef.current;
+              if (last) {
+                const rate = playerRef.current?.getPlaybackRate?.() ?? 1;
+                const expected = last.playing ? last.t + ((nowWall - last.wall) / 1000) * rate : last.t;
+                const limit = last.playing ? SEEK_JUMP_SEC : SEEK_JUMP_IDLE_SEC;
+                if (Math.abs(t - expected) > limit) setSeekCount((c) => c + 1);
               }
+              lastReadRef.current = { t, wall: nowWall, playing };
+              setCurrentTime(t);
+            };
+            read(); // 상태가 바뀐 순간(재생 시작·일시정지·탐색 직후)에도 한 번 반영
+            if (e.data === YT_STATE_ENDED) {
+              onEndedRef.current?.();
             }
+            intervalRef.current = window.setInterval(read, playing ? POLL_PLAYING_MS : POLL_IDLE_MS);
           },
         },
       });
@@ -199,5 +235,14 @@ export function useYouTubePlayer(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [containerId, videoId, enabled]);
 
-  return { currentTime, duration, playbackError };
+  const getNow = useCallback((): number | undefined => {
+    const t = playerRef.current?.getCurrentTime?.();
+    return typeof t === "number" ? t : undefined;
+  }, []);
+  const getRate = useCallback((): number => {
+    const r = playerRef.current?.getPlaybackRate?.();
+    return typeof r === "number" && r > 0 ? r : 1;
+  }, []);
+
+  return { currentTime, duration, playbackError, phase, seekCount, getNow, getRate };
 }

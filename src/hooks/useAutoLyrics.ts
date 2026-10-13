@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Song } from "../types/song";
-import { hasTimestamps, parseLyrics } from "../utils/lyrics";
+import { hasTimestamps, parseLyrics, stripLyricTracks } from "../utils/lyrics";
+import { getSongAliases } from "../utils/songAliases";
+import { notify } from "../components/ui/feedback";
+import { describeLyricsError, isAbort } from "../lyrics/errors";
+import { buildPreview, clearLyricsBackup, readLyricsBackup, textForApply, writeLyricsBackup, type ApplyMode, type CandidatePreview } from "../lyrics/apply";
 import { learnArtistAliases } from "../lyrics/artist";
 import { deleteEntry, isAutoLyricsEnabled, isExpired, readEntry, writeEntry } from "../lyrics/cache";
 import { LrclibProvider } from "../lyrics/providers/lrclib";
 import { MusicBrainzAliasProvider } from "../lyrics/providers/musicbrainz";
-import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyrics } from "../lyrics/pipeline";
+import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyricsDetailed, searchRanked } from "../lyrics/pipeline";
 import { clampWarp, compareDurations, isIdentity, nudgeOffset, warpFromAnchors } from "../lyrics/warp";
 import type { Anchor } from "../lyrics/warp";
-import type { AliasProvider, LyricsProvider, SyncEntry } from "../lyrics/types";
+import type { AliasProvider, LyricsProvider, ScoredCandidate, SyncEntry } from "../lyrics/types";
 
 /** 화면에 보여 줄 자동 가사/싱크 상태 */
 export type AutoStatusKind =
@@ -84,14 +88,36 @@ export function describeStatus(args: {
  * - 저장된 Song 데이터는 절대 수정하지 않는다. 결과는 별도 캐시에만 저장된다.
  * - 곡이 바뀌거나 느린 응답이 늦게 도착해도 이전 곡의 결과가 적용되지 않는다 (요청 번호로 폐기)
  */
-export function useAutoLyrics(rawSong: Song | undefined) {
+export interface AutoLyricsOptions {
+  /** 곡 가사를 DB 에 저장한다 (관리자만 넘긴다). 없으면 "곡에 저장" 적용은 쓸 수 없고 이 브라우저 임시 적용만 된다 */
+  save?: (lyrics: string) => Promise<void>;
+  /** 현재 MR 길이(초) — 후보와 길이 차이를 미리보기에 보여 준다 */
+  mrDuration?: number;
+}
+
+export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOptions = {}) {
+  const saveFn = hookOpts.save;
+  const mrDurationOpt = hookOpts.mrDuration;
+  const [pool, setPool] = useState<ScoredCandidate[]>([]);
+  const poolRef = useRef<ScoredCandidate[]>([]);
+  const [listing, setListing] = useState(false);
+  const [applyMsg, setApplyMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
+  const [applying, setApplying] = useState(false);
   const [entry, setEntry] = useState<SyncEntry | null>(null);
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [enabled, setEnabled] = useState(isAutoLyricsEnabled());
   const reqRef = useRef(0);
 
-  const ownLyrics = rawSong?.lyrics ?? "";
+  const rawLyrics = rawSong?.lyrics ?? "";
+  // 발음/번역 보조 줄은 가사 줄 정렬·캐시 키에서 제외한다 (원문 기준)
+  const ownLyrics = useMemo(() => stripLyricTracks(rawLyrics), [rawLyrics]);
+  const aliasKey = JSON.stringify([rawSong?.titleAliases ?? [], rawSong?.artistAliases ?? []]);
+  const known = useMemo(
+    () => getSongAliases({ title: rawSong?.title ?? "", artist: rawSong?.artist ?? "", titleAliases: rawSong?.titleAliases, artistAliases: rawSong?.artistAliases }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawSong?.title, rawSong?.artist, aliasKey]
+  );
   const ownSynced = useMemo(() => hasTimestamps(parseLyrics(ownLyrics)), [ownLyrics]);
   const title = rawSong?.title ?? "";
   const artist = rawSong?.artist ?? "";
@@ -111,20 +137,26 @@ export function useAutoLyrics(rawSong: Song | undefined) {
       setSearching(true);
       setError(null);
       try {
-        const result = await resolveLyrics({ songId, title, artist, ownLyrics }, provider, { candidateId: opts.candidateId, aliasProvider });
+        const { entry: result, pool: found } = await resolveLyricsDetailed(
+          { songId, title, artist, ownLyrics, titleAliases: known.titles, artistAliases: known.artists },
+          provider,
+          { candidateId: opts.candidateId, aliasProvider, pool: opts.candidateId ? poolRef.current : undefined }
+        );
         if (id !== reqRef.current) return; // 곡이 바뀌었거나 더 새로운 요청이 있음 → 이 결과는 버린다
+        poolRef.current = found;
+        setPool(found);
         writeEntry(result);
         setEntry(result);
         // 사용자가 직접 확인한 후보면 아티스트 표기(예: 아이유 ↔ IU)를 별칭으로 기억해 다음 검색부터 바로 맞춘다
         if (opts.candidateId && result.candidate) learnArtistAliases(artist, result.candidate.artist);
-      } catch {
-        if (id !== reqRef.current) return;
-        setError("가사 서비스에 연결하지 못했어요"); // 일시적 실패는 캐시하지 않는다
+      } catch (e) {
+        if (id !== reqRef.current || isAbort(e)) return;
+        setError(describeLyricsError(e)); // 일시적 실패는 캐시하지 않는다 (오류 종류별 문구)
       } finally {
         if (id === reqRef.current) setSearching(false);
       }
     },
-    [songId, title, artist, ownLyrics]
+    [songId, title, artist, ownLyrics, known]
   );
 
   // 곡이 바뀌면: 캐시 확인 → 없거나 무효면 검색
@@ -132,6 +164,9 @@ export function useAutoLyrics(rawSong: Song | undefined) {
     const myReq = ++reqRef.current;
     setError(null);
     setSearching(false);
+    poolRef.current = [];
+    setPool([]);
+    setApplyMsg(null);
     if (!songId || ownSynced) {
       setEntry(null);
       return;
@@ -170,7 +205,113 @@ export function useAutoLyrics(rawSong: Song | undefined) {
     [videoId]
   );
 
+  /** 후보 목록만 새로 받아 온다 (자동 선택/캐시와 무관, 사용자가 누를 때만). 본문까지 받으므로 미리보기에 추가 요청이 필요 없다 */
+  const loadCandidates = useCallback(async () => {
+    if (!songId) return;
+    setListing(true);
+    setError(null);
+    try {
+      const ranked = await searchRanked({ songId, title, artist, ownLyrics, titleAliases: known.titles, artistAliases: known.artists }, provider, { aliasProvider });
+      poolRef.current = ranked;
+      setPool(ranked);
+    } catch (e) {
+      if (!isAbort(e)) setError(describeLyricsError(e));
+    } finally {
+      setListing(false);
+    }
+  }, [songId, title, artist, ownLyrics, known]);
+
+  const previewOf = useCallback(
+    (candidateId: string, mrDuration?: number): CandidatePreview | null => {
+      const c = poolRef.current.find((x) => x.id === candidateId) ?? pool.find((x) => x.id === candidateId);
+      return c ? buildPreview(c, { ownLyrics: rawLyrics, mrDuration: mrDuration ?? mrDurationOpt }) : null;
+    },
+    [pool, rawLyrics, mrDurationOpt]
+  );
+
+  /**
+   * 후보 가사를 곡에 저장하고 적용한다. 저장이 실패하면 아무것도 바꾸지 않는다(기존 가사 유지).
+   * 덮어쓰기 전에 기존 가사를 이 브라우저에 1회 백업한다 (undoApply 로 되돌릴 수 있다).
+   */
+  const applyCandidate = useCallback(
+    async (candidateId: string, mode: ApplyMode): Promise<boolean> => {
+      if (!songId || !saveFn) return false;
+      const preview = previewOf(candidateId);
+      const text = preview ? textForApply(preview, mode) : null;
+      if (!preview || !text) {
+        setApplyMsg({ kind: "error", text: "적용할 가사를 만들지 못했어요" });
+        return false;
+      }
+      setApplying(true);
+      setApplyMsg(null);
+      try {
+        if (rawLyrics.trim()) writeLyricsBackup(songId, rawLyrics);
+        await saveFn(text);
+        deleteEntry(songId); // 저장된 가사가 바뀌었으니 임시 자동 결과는 필요 없다
+        setEntry(null);
+        const okText = preview.synced ? "가사를 저장했어요 — 싱크가 바로 적용돼요" : "가사를 저장했어요 (싱크 없음)";
+        setApplyMsg({ kind: "ok", text: okText });
+        notify(okText); // 저장된 싱크 가사가 생기면 이 패널은 사라지므로 토스트로도 알린다
+        return true;
+      } catch (e) {
+        setApplyMsg({ kind: "error", text: `저장하지 못했어요 — 기존 가사는 그대로예요${e instanceof Error && e.message ? ` (${e.message})` : ""}` });
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [songId, saveFn, previewOf, rawLyrics]
+  );
+
+  /** 가사 텍스트를 그대로 저장한다 (발음 저장 등). 기존 가사는 1회 백업하고, 저장 실패 시 아무것도 바꾸지 않는다 */
+  const saveLyricsText = useCallback(
+    async (text: string, okMessage: string): Promise<boolean> => {
+      if (!songId || !saveFn) return false;
+      setApplying(true);
+      setApplyMsg(null);
+      try {
+        if (rawLyrics.trim()) writeLyricsBackup(songId, rawLyrics);
+        await saveFn(text);
+        setApplyMsg({ kind: "ok", text: okMessage });
+        notify(okMessage);
+        return true;
+      } catch (e) {
+        setApplyMsg({ kind: "error", text: `저장하지 못했어요 — 기존 가사는 그대로예요${e instanceof Error && e.message ? ` (${e.message})` : ""}` });
+        return false;
+      } finally {
+        setApplying(false);
+      }
+    },
+    [songId, saveFn, rawLyrics]
+  );
+
+  const undoApply = useCallback(async (): Promise<boolean> => {
+    if (!songId || !saveFn) return false;
+    const b = readLyricsBackup(songId);
+    if (!b) return false;
+    try {
+      await saveFn(b.lyrics);
+      clearLyricsBackup(songId);
+      setApplyMsg({ kind: "ok", text: "이전 가사로 되돌렸어요" });
+      return true;
+    } catch {
+      setApplyMsg({ kind: "error", text: "되돌리지 못했어요" });
+      return false;
+    }
+  }, [songId, saveFn]);
+
   return {
+    candidates: pool,
+    listing,
+    loadCandidates,
+    previewOf,
+    applyCandidate,
+    undoApply,
+    saveLyricsText,
+    canSave: Boolean(saveFn),
+    hasBackup: songId ? readLyricsBackup(songId) !== null : false,
+    applyMsg,
+    applying,
     song,
     rawSong,
     entry,

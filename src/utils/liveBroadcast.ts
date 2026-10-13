@@ -51,6 +51,21 @@ export interface LiveState {
   song?: LiveSong;
   /** 타임스탬프가 있는 줄의 텍스트만 (빈 문자열 = 간주 구간). 싱크 가능한 곡이 아니면 빈 배열 */
   lines: string[];
+  /** lines 와 같은 위치의 한글 발음 ("" = 없음). 발음이 하나도 없으면 필드 자체가 없다 (예전 발신자/수신자와 호환) */
+  pron?: string[];
+  /**
+   * lines 와 같은 위치의 "MR 재생 시간(초)" — 이 시각이 되면 그 줄이 시작된다 (싱크 보정값이 이미 반영됨).
+   * 있으면 OBS 가 수신한 재생 위치(pos)로 줄 전환을 스스로 계산한다. 없으면(예전 발신자) lineIndex 만 쓴다.
+   */
+  times?: number[];
+  /** 발신 순간의 MR 재생 위치(초). 수신 측은 "받은 시각"을 기준으로 playback 이 playing 일 때만 앞으로 진행시킨다 */
+  pos?: number;
+  /** 재생 속도 (기본 1) */
+  rate?: number;
+  /** 현재 가사 싱크 보정값(초) — 표시/진단용 (times 에는 이미 반영됨) */
+  off?: number;
+  /** 탐색(seek) 횟수 — 바뀌면 즉시 새 상태를 보내라는 신호일 뿐 의미는 없다 */
+  seek?: number;
   /** lines 안에서 지금 부르는 줄의 위치. 아직 첫 줄 전이면 -1 */
   lineIndex: number;
   synced: boolean;
@@ -498,16 +513,22 @@ export function subscribeLiveAck(target: LiveTarget, onAck: (testId: string) => 
  */
 export function buildLiveLyrics(
   lyricLines: LyricLine[],
-  currentLineIndex: number
-): { lines: string[]; lineIndex: number } {
+  currentLineIndex: number,
+  offsetSec = 0
+): { lines: string[]; lineIndex: number; pron?: string[]; times: number[] } {
   const lines: string[] = [];
+  const pron: string[] = [];
+  const times: number[] = [];
   let lineIndex = -1;
   lyricLines.forEach((l, i) => {
     if (l.time === null) return;
     lines.push(l.text);
+    pron.push(l.pron ?? "");
+    times.push(Math.round(((l.time as number) + offsetSec) * 100) / 100);
     if (i <= currentLineIndex) lineIndex = lines.length - 1;
   });
-  return { lines, lineIndex };
+  // 원문 줄과 발음 줄은 같은 인덱스로 함께 바뀐다. 발음이 하나도 없으면 필드를 아예 보내지 않는다.
+  return pron.some(Boolean) ? { lines, lineIndex, pron, times } : { lines, lineIndex, times };
 }
 
 export function toLiveSong(song: Song, requester?: string): LiveSong {

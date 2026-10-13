@@ -277,6 +277,23 @@ function Lyrics({
       : undefined;
   // 곡이 바뀌면 key도 바뀌어서, 이전 곡 가사가 남지 않고 새 곡 기준으로 다시 그려진다
   const rowKey = `${state.song?.id ?? ""}:${idx}`;
+  // 한글 발음: 원문과 같은 인덱스(같은 줄 전환)로만 읽는다 — 별도 타이밍을 만들지 않는다
+  const pronOn = settings.lyricsPron === "on" && Array.isArray(state.pron) && state.pron.length === state.lines.length;
+  const pronOf = (i: number): string => (pronOn && i >= 0 ? (state.pron?.[i] ?? "") : "");
+  const nextIdx = (() => {
+    for (let i = Math.max(0, idx + 1); i < state.lines.length; i++) if (state.lines[i].trim()) return i;
+    return -1;
+  })();
+  const prevIdx = (() => {
+    for (let i = Math.min(state.lines.length - 1, idx - 1); i >= 0; i--) if (state.lines[i].trim()) return i;
+    return -1;
+  })();
+  const pronRow = (text: string, size: string, opacity: number, testId: string): React.ReactNode =>
+    text ? (
+      <div data-testid={testId} style={{ ...rowClamp(2), fontSize: size, color: pal.sub, opacity, fontWeight: 400 }}>
+        {text}
+      </div>
+    ) : null;
   return (
     <div data-testid="overlay-lyrics" style={{ display: "flex", flexDirection: "column", gap: "0.3em", width: "100%" }}>
       {showPrev && (
@@ -284,6 +301,7 @@ function Lyrics({
           {prev}
         </div>
       )}
+      {showPrev && pronRow(pronOf(prevIdx), "0.7em", 0.45, "overlay-prev-pron")}
       <div
         key={rowKey}
         data-testid="overlay-current"
@@ -298,11 +316,13 @@ function Lyrics({
       >
         {current || "\u00A0"}
       </div>
+      {pronRow(pronOf(idx), "0.62em", 0.9, "overlay-current-pron")}
       {showNext && (
         <div data-testid="overlay-next" style={{ ...rowClamp(2), fontSize: "1em", color: pal.sub, opacity: 0.85, fontWeight: 400 }}>
           {next || "\u00A0"}
         </div>
       )}
+      {showNext && pronRow(pronOf(nextIdx), "0.7em", 0.6, "overlay-next-pron")}
     </div>
   );
 }

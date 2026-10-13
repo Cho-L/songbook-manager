@@ -44,6 +44,8 @@ export interface OverlaySettings {
   showProgress: boolean;
   showQueue: boolean;
   lyricsMode: OverlayLyricsMode;
+  /** 한글 발음 줄 표시 (가사 데이터에 발음이 있을 때만 나타난다) */
+  lyricsPron: "on" | "off";
   background: OverlayBackground;
   /** 반투명/카드/단색 배경의 불투명도 (10~100) */
   opacity: number;
@@ -107,6 +109,7 @@ export const DEFAULT_OVERLAY_SETTINGS: OverlaySettings = {
   showProgress: false,
   showQueue: false,
   lyricsMode: "next",
+  lyricsPron: "on",
   background: "transparent",
   opacity: 60,
   animation: true,
@@ -252,6 +255,7 @@ export function parseOverlaySettings(params: URLSearchParams): OverlaySettings {
     showProgress: bool(params.get("pr"), d.showProgress),
     showQueue: bool(params.get("q"), d.showQueue),
     lyricsMode: pick(params.get("lm"), LYRIC_MODES, d.lyricsMode),
+    lyricsPron: pick(params.get("lp"), ["on", "off"] as const, d.lyricsPron),
     background: pick(params.get("bg"), BACKGROUNDS, d.background),
     opacity: num(params.get("op"), d.opacity, 10, 100),
     animation: bool(params.get("an"), d.animation),
@@ -308,6 +312,7 @@ export function serializeOverlaySettings(s: OverlaySettings, bookId?: string, li
   q.set("pr", b(s.showProgress));
   q.set("q", b(s.showQueue));
   q.set("lm", s.lyricsMode);
+  q.set("lp", s.lyricsPron);
   q.set("bg", s.background);
   q.set("op", String(s.opacity));
   q.set("an", b(s.animation));
