@@ -154,10 +154,10 @@ test("미리보기: 타임스탬프 보존, 길이 차이, 싱크 없음 안내,
 });
 
 test("발음: 일본어 가나 규칙·한자 상태 표시", () => {
-  assert.equal(japaneseToHangul("ありがとう").text, "아리가토");
+  assert.equal(japaneseToHangul("ありがとう").text, "아리가토오");
   assert.equal(japaneseToHangul("ありがとう").status, "ok");
   assert.equal(japaneseToHangul("ロックを").text, "롯쿠오");
-  assert.equal(japaneseToHangul("きょう").text, "쿄우");
+  assert.equal(japaneseToHangul("きょう").text, "쿄오");
   assert.equal(japaneseToHangul("しゃべる").text, "샤베루");
   const kanji = japaneseToHangul("君が好きです");
   assert.equal(kanji.text, "키미가스키데스");

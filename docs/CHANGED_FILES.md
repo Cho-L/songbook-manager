@@ -92,3 +92,9 @@
 신규: `src/lyrics/lyricOffset.ts`, `src/hooks/useLyricOffset.ts`, `src/utils/liveClock.ts`, `src/hooks/useClockedLive.ts`, `tests/liveSync.test.ts`, `docs/lyrics-sync-phase32.md`
 수정: `src/hooks/useYouTubePlayer.ts`, `src/hooks/useLivePublisher.ts`, `src/utils/liveBroadcast.ts`, `src/pages/{SongModePage,ConcertModePage,OverlayPage}.tsx`, `tests/lyrics-phase31.test.ts`
 DB/스키마 변경: 없음
+
+
+## Phase 3.3 (최종 통합 품질 개선)
+신규: `src/lyrics/pronunciation/{japanese,tokenizer}.ts`, `src/lyrics/loanword.ts`, `src/hooks/usePronDraft.ts`, `tests/lyrics-phase33.test.ts`, `docs/lyrics-phase33.md`, `public/_headers`
+수정: `src/lyrics/pronunciation/{kana,index}.ts`, `src/lyrics/{matching,text,types,lyricOffset}.ts`, `src/hooks/{useAutoLyrics,useLyricOffset}.ts`, `src/components/song/{PronunciationPanel,LyricsCandidatePanel}.tsx`, `src/pages/SongModePage.tsx`, `vite.config.ts`(사전 복사 플러그인), `package.json`(+`@patdx/kuromoji`), `tests/lyrics-phase31.test.ts`
+DB/스키마 변경: 없음

@@ -5,7 +5,7 @@
  */
 const PREFIX = "songbook:lyric-offset:v1:";
 export const OFFSET_STEP_SEC = 0.5;
-export const OFFSET_LIMIT_SEC = 30;
+export const OFFSET_LIMIT_SEC = 120;
 
 export function clampOffset(v: number): number {
   if (!Number.isFinite(v)) return 0;
@@ -35,4 +35,16 @@ export function writeLyricOffset(songId: string, offset: number): void {
 
 export function formatOffsetSec(v: number): string {
   return `${v > 0 ? "+" : ""}${v.toFixed(1)}초`;
+}
+
+/**
+ * "현재 부분이 싱크 시작": 고른 줄의 원래 시작 시간(보정 전)과 지금 재생 시간으로 전체 보정값을 구한다.
+ * 줄의 시간은 보정이 섞이지 않은 원본이므로 결과는 절대값이다 → 다시 맞춰도 이전 보정과 겹쳐 더해지지 않는다.
+ * 값이 한도를 넘거나 시간을 모르면 null (적용하지 않는다).
+ */
+export function anchorOffset(lineTime: number | null | undefined, nowSec: number | null | undefined): number | null {
+  if (lineTime === null || lineTime === undefined || nowSec === null || nowSec === undefined) return null;
+  if (!Number.isFinite(lineTime) || !Number.isFinite(nowSec)) return null;
+  const v = Math.round((nowSec - lineTime) * 10) / 10;
+  return Math.abs(v) > OFFSET_LIMIT_SEC ? null : v;
 }

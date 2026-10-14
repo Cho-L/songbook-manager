@@ -60,7 +60,7 @@ export function describeStatus(args: {
   if (!enabled && !entry) return { kind: "off", text: "", notes: [] };
   if (!entry) return { kind: "off", text: "", notes: [] };
   const notes = [...entry.warnings];
-  const detail = [entry.source ? `출처 ${entry.source}` : "", entry.confidence !== undefined ? `일치도 ${Math.round(entry.confidence * 100)}%` : ""].filter(Boolean).join(" · ") || undefined;
+  const detail = [entry.source ? `출처 ${entry.source}` : "", entry.confidence !== undefined ? `일치 근거 ${entry.confidence >= 0.75 ? "충분" : entry.confidence >= 0.5 ? "확인 필요" : "부족"}` : ""].filter(Boolean).join(" · ") || undefined;
   if (entry.outcome === "synced" || entry.outcome === "partial") {
     const cmp = compareDurations(entry.candidate?.duration, mrDuration);
     const warp = getWarp(entry, videoId);
@@ -234,10 +234,10 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
    * 덮어쓰기 전에 기존 가사를 이 브라우저에 1회 백업한다 (undoApply 로 되돌릴 수 있다).
    */
   const applyCandidate = useCallback(
-    async (candidateId: string, mode: ApplyMode): Promise<boolean> => {
+    async (candidateId: string, mode: ApplyMode, textOverride?: string): Promise<boolean> => {
       if (!songId || !saveFn) return false;
       const preview = previewOf(candidateId);
-      const text = preview ? textForApply(preview, mode) : null;
+      const text = preview ? (textOverride && textOverride.trim() ? textOverride : textForApply(preview, mode)) : null;
       if (!preview || !text) {
         setApplyMsg({ kind: "error", text: "적용할 가사를 만들지 못했어요" });
         return false;
@@ -339,6 +339,15 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
       saveWarp({ ...cur, offset: nudgeOffset(cur.offset, stepTenths, direction) });
     },
     resetWarp: () => saveWarp({ offset: 0, ratio: 1 }),
+    /** "현재 부분이 싱크 시작" (자동 찾은 가사): 화면에 보이는 줄 시간(보정 포함)을 nowSec 로 옮기도록 기존 보정에 차이만큼 더한다 */
+    shiftWarp: (deltaSec: number): boolean => {
+      if (!entry || !Number.isFinite(deltaSec)) return false;
+      const cur = getWarp(entry, videoId);
+      const next = clampWarp({ ...cur, offset: Math.round((cur.offset + deltaSec) * 10) / 10 });
+      if (Math.abs(cur.offset + deltaSec - next.offset) > 0.05) return false; // 한도 초과
+      saveWarp(next);
+      return true;
+    },
     /** "지금이 첫 소절 시작" — 현재 재생 시간을 첫 싱크 줄의 대응점으로 삼아 오프셋을 맞춘다 */
     anchorFirstLine: (nowSec: number): boolean => {
       if (!entry) return false;

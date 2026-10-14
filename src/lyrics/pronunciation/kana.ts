@@ -75,6 +75,109 @@ export interface KanaResult {
   notes: string[];
 }
 
+/** 가나(히라가나·가타카나) 문자열을 한글로. 가나가 아닌 글자는 그대로 둔다. \u0000X\u0000 로 감싼 글자는 원문 그대로 둔다. */
+export function kanaToHangul(kana: string, onHaHe?: () => void): string {
+  const hira = toHiragana(kana);
+  const cs = [...hira];
+  const origCs = [...kana];
+  const out: string[] = [];
+  let sokuon = false;
+  const push = (syl: string) => {
+    if (sokuon) {
+      // っ: 앞 음절의 받침 ㅅ (롯쿠). 앞 음절이 없거나 이미 받침이 있으면 그냥 건너뛴다
+      const last = out.length - 1;
+      if (last >= 0 && out[last].length === 1 && !hasFinal(out[last])) out[last] = withFinal(out[last], "ㅅ");
+      sokuon = false;
+    }
+    out.push(syl);
+  };
+  const lastVowelIsO = () => {
+    const last = out[out.length - 1];
+    if (!last || last.length !== 1) return false;
+    const code = last.charCodeAt(0) - 0xac00;
+    if (code < 0 || code > 11171) return false;
+    const jung = Math.floor((code % 588) / 28);
+    return jung === 8 || jung === 12; // ㅗ, ㅛ
+  };
+  const lastVowelSyl = (): string | null => {
+    const last = out[out.length - 1];
+    if (!last || last.length !== 1) return null;
+    const code = last.charCodeAt(0) - 0xac00;
+    if (code < 0 || code > 11171) return null;
+    const jung = Math.floor((code % 588) / 28);
+    const base: Record<number, string> = { 0: "아", 1: "애", 2: "아", 3: "애", 4: "어", 5: "에", 6: "어", 7: "에", 8: "오", 9: "아", 10: "애", 11: "에", 12: "오", 13: "우", 14: "우", 15: "에", 16: "이", 17: "우", 18: "으", 19: "이", 20: "이" };
+    return base[jung] ?? null;
+  };
+  for (let i = 0; i < cs.length; i++) {
+    const c = cs[i];
+    if (c === "\u0000") {
+      push(cs[i + 1] ?? ""); // 읽을 수 없는 한자: 원문 그대로
+      i += 2; // 한자 한 글자 + 닫는 표식
+      continue;
+    }
+    if (c === "っ") {
+      sokuon = true;
+      continue;
+    }
+    if (c === "ん") {
+      const last = out.length - 1;
+      if (last >= 0 && out[last].length === 1 && !hasFinal(out[last])) out[last] = withFinal(out[last], "ㄴ");
+      else out.push("ㄴ");
+      continue;
+    }
+    if (c === "ー") {
+      const v = lastVowelSyl();
+      if (v) push(v); // 장음 부호: 앞 모음을 한 번 더 적는다 (ラー → 라아)
+      continue;
+    }
+    // 요음 (きゃ 등)
+    const next = cs[i + 1];
+    if (next && SMALL_Y[next] && YOON_BASE[c]) {
+      const cho = YOON_BASE[c][0];
+      const kind = SMALL_Y[next];
+      const [withY, plain] = YOON_VOWEL[kind];
+      const vowel = PLAIN_YOON.has(cho) ? plain : withY; // じゃ·ちゃ → 자·차 (y 없음), 나머지는 샤·캬 …
+      push(compose(cho, vowel));
+      i++;
+      continue;
+    }
+    // 작은 모음 (ファ, ティ 등): 앞 글자의 모음을 바꾼다
+    if (next && SMALL_VOWEL[next] && A[c]) {
+      const [cho] = A[c];
+      const special: Record<string, Cho> = { ふ: "ㅍ", つ: "ㅊ", て: "ㅌ", で: "ㄷ", ゔ: "ㅂ", し: "ㅅ", ち: "ㅊ", じ: "ㅈ" };
+      push(compose(special[c] ?? cho, SMALL_VOWEL[next]));
+      i++;
+      continue;
+    }
+    if (SMALL_Y[c]) {
+      // 단독 작은 や행은 일반 や행으로
+      push(compose("ㅇ", YOON_VOWEL[SMALL_Y[c]][0]));
+      continue;
+    }
+    if (SMALL_VOWEL[c]) {
+      push(compose("ㅇ", SMALL_VOWEL[c]));
+      continue;
+    }
+    const syl = A[c];
+    if (syl) {
+      // 장음 う: お단 뒤의 う 는 길게 늘이는 소리라서 표기하지 않는다 (ありがとう → 아리가토)
+      if (c === "う" && lastVowelIsO()) {
+        push(compose("ㅇ", "ㅗ")); // 장음 오단+う: 길게 늘이는 소리도 '오'로 적는다 (希望 → 키보오)
+        continue;
+      }
+      if (c === "は" || c === "へ" || c === "を") {
+        if (c !== "を") onHaHe?.();
+      }
+      push(compose(syl[0], syl[1]));
+      continue;
+    }
+    // 가나가 아닌 글자(영문·숫자·공백·기호·한글)는 그대로
+    if (sokuon) sokuon = false;
+    out.push(origCs[i] ?? c);
+  }
+  return out.join("").replace(/\s+/g, " ").trim();
+}
+
 /**
  * 한 줄 안의 가나/한자를 한글로 바꾼다. 가나·한자가 아닌 글자(영문, 숫자, 기호, 한글)는 그대로 둔다.
  * - 가나만 있는 줄: ok (は·へ 조사 가능성이 있으면 review)
@@ -111,88 +214,6 @@ export function japaneseToHangul(input: string): KanaResult {
     i++;
   }
 
-  // 2) 가나 → 한글
-  const hira = toHiragana(kana);
-  const cs = [...hira];
-  const origCs = [...kana];
-  const out: string[] = [];
-  let sokuon = false;
-  const push = (syl: string) => {
-    if (sokuon) {
-      // っ: 앞 음절의 받침 ㅅ (롯쿠). 앞 음절이 없거나 이미 받침이 있으면 그냥 건너뛴다
-      const last = out.length - 1;
-      if (last >= 0 && out[last].length === 1 && !hasFinal(out[last])) out[last] = withFinal(out[last], "ㅅ");
-      sokuon = false;
-    }
-    out.push(syl);
-  };
-  const lastVowelIsO = () => {
-    const last = out[out.length - 1];
-    if (!last || last.length !== 1) return false;
-    const code = last.charCodeAt(0) - 0xac00;
-    if (code < 0 || code > 11171) return false;
-    const jung = Math.floor((code % 588) / 28);
-    return jung === 8; // ㅗ
-  };
-  for (let i = 0; i < cs.length; i++) {
-    const c = cs[i];
-    if (c === "\u0000") {
-      push(cs[i + 1] ?? ""); // 읽을 수 없는 한자: 원문 그대로
-      i += 2; // 한자 한 글자 + 닫는 표식
-      continue;
-    }
-    if (c === "っ") {
-      sokuon = true;
-      continue;
-    }
-    if (c === "ん") {
-      const last = out.length - 1;
-      if (last >= 0 && out[last].length === 1 && !hasFinal(out[last])) out[last] = withFinal(out[last], "ㄴ");
-      else out.push("ㄴ");
-      continue;
-    }
-    if (c === "ー") continue; // 장음은 표기하지 않는다
-    // 요음 (きゃ 등)
-    const next = cs[i + 1];
-    if (next && SMALL_Y[next] && YOON_BASE[c]) {
-      const cho = YOON_BASE[c][0];
-      const kind = SMALL_Y[next];
-      const [withY, plain] = YOON_VOWEL[kind];
-      const vowel = PLAIN_YOON.has(cho) ? plain : withY; // じゃ·ちゃ → 자·차 (y 없음), 나머지는 샤·캬 …
-      push(compose(cho, vowel));
-      i++;
-      continue;
-    }
-    // 작은 모음 (ファ, ティ 등): 앞 글자의 모음을 바꾼다
-    if (next && SMALL_VOWEL[next] && A[c]) {
-      const [cho] = A[c];
-      const special: Record<string, Cho> = { ふ: "ㅍ", つ: "ㅊ", て: "ㅌ", で: "ㄷ", ゔ: "ㅂ", し: "ㅅ", ち: "ㅊ", じ: "ㅈ" };
-      push(compose(special[c] ?? cho, SMALL_VOWEL[next]));
-      i++;
-      continue;
-    }
-    if (SMALL_Y[c]) {
-      // 단독 작은 や행은 일반 や행으로
-      push(compose("ㅇ", YOON_VOWEL[SMALL_Y[c]][0]));
-      continue;
-    }
-    if (SMALL_VOWEL[c]) {
-      push(compose("ㅇ", SMALL_VOWEL[c]));
-      continue;
-    }
-    const syl = A[c];
-    if (syl) {
-      // 장음 う: お단 뒤의 う 는 길게 늘이는 소리라서 표기하지 않는다 (ありがとう → 아리가토)
-      if (c === "う" && lastVowelIsO()) continue;
-      if (c === "は" || c === "へ" || c === "を") {
-        if (c !== "を") bump("review", "は/へ는 조사일 때 '와/에'로 읽어요 — 확인이 필요해요");
-      }
-      push(compose(syl[0], syl[1]));
-      continue;
-    }
-    // 가나가 아닌 글자(영문·숫자·공백·기호·한글)는 그대로
-    if (sokuon) sokuon = false;
-    out.push(origCs[i] ?? c);
-  }
-  return { text: out.join("").replace(/\s+/g, " ").trim(), status, notes };
+  const text = kanaToHangul(kana, () => bump("review", "は/へ는 조사일 때 '와/에'로 읽어요 — 확인이 필요해요"));
+  return { text, status, notes };
 }

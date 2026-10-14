@@ -19,6 +19,7 @@ export function useLyricOffset(songId: string | undefined) {
   );
   return {
     offset,
+    set,
     nudge: (dir: 1 | -1) => set(offset + dir * OFFSET_STEP_SEC),
     reset: () => set(0),
   };

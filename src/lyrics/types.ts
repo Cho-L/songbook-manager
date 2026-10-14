@@ -34,6 +34,17 @@ export interface LyricsCandidate {
   source: string;
 }
 
+/** 후보가 왜 이 순위인지 보여 주는 근거. 퍼센트는 실제 확률이 아니라 정렬용 점수라서 화면에는 이 근거와 등급을 쓴다 */
+export interface MatchEvidence {
+  title: "exact" | "close" | "alias" | "loanword" | "unverified" | "different";
+  artist: "exact" | "close" | "different" | "unknown";
+  /** 높음: 자동 선택 가능한 수준 / 보통: 후보로 보여 주고 확인받음 / 낮음: 근거 부족 */
+  level: "high" | "medium" | "low";
+  /** 예: "아티스트 일치 · 제목 확인 불가 (표기 언어가 달라요)" */
+  label: string;
+  notes: string[];
+}
+
 export interface ScoredCandidate extends LyricsCandidate {
   /** 곡 정보(제목/가수) 일치 신뢰도 0~1 */
   confidence: number;
@@ -41,6 +52,7 @@ export interface ScoredCandidate extends LyricsCandidate {
   artistSimilarity: number;
   /** 라이브/리믹스 등 다른 버전으로 보이는가 */
   versionMismatch: boolean;
+  evidence?: MatchEvidence;
 }
 
 export interface LyricsProvider {

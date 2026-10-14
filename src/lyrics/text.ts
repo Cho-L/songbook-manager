@@ -4,6 +4,13 @@ const VERSION_WORDS = /\b(live|remix|acoustic|instrumental|inst\.?|cover|mr|ver\
 
 import { crossScriptSimilarity, hasHangul, hasLatin } from "./phonetic";
 
+/** 같은 글자의 다른 자형(구자체·이체자) — 제목 비교에서 같은 글자로 본다 (聴/聞은 노래 제목에서 같은 표기로 흔히 섞여 쓰인다) */
+const KANJI_VARIANTS: Record<string, string> = {
+  聴: "聞", 聽: "聞", 戀: "恋", 來: "来", 國: "国", 體: "体", 變: "変", 學: "学", 會: "会", 戰: "戦", 對: "対", 當: "当", 邊: "辺", 驛: "駅", 繪: "絵",
+  廣: "広", 齋: "斎", 澤: "沢", 櫻: "桜", 讀: "読", 臺: "台", 眞: "真", 觀: "観", 關: "関", 氣: "気", 實: "実", 擔: "担", 點: "点", 夢: "夢", 發: "発",
+  龍: "竜", 靈: "霊", 舊: "旧", 兩: "両", 圓: "円", 縣: "県", 經: "経", 傳: "伝", 歡: "歓", 勸: "勧", 壞: "壊", 屬: "属", 歸: "帰", 險: "険", 號: "号",
+};
+
 /** 비교용 정규화: 악센트 제거(é→e), 소문자, 기호/공백 제거, 한글·영문·숫자·가나·한자만 남긴다 */
 export function normalizeText(s: string): string {
   return s
@@ -11,6 +18,7 @@ export function normalizeText(s: string): string {
     .replace(/\p{M}/gu, "")
     .normalize("NFKC")
     .toLowerCase()
+    .replace(/[聴聽戀來國體變學會戰對當邊驛繪廣齋澤櫻讀臺眞觀關氣實擔點發龍靈舊兩圓縣經傳歡勸壞屬歸險號]/g, (ch) => KANJI_VARIANTS[ch] ?? ch)
     .replace(/[\u30A1-\u30F6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60)) // 가타카나 → 히라가나 (アイ ↔ あい)
     .replace(/[^\p{L}\p{N}]+/gu, "");
 }

@@ -35,7 +35,7 @@ import { LinkifiedText } from "../components/song/LinkifiedText";
 import { useLivePublisher } from "../hooks/useLivePublisher";
 import { useRequesterName } from "../hooks/useRequesterName";
 import { useAccountLiveKey } from "../hooks/useAccountLiveKey";
-import { formatOffsetSec } from "../lyrics/lyricOffset";
+import { anchorOffset, formatOffsetSec } from "../lyrics/lyricOffset";
 import { useLyricOffset } from "../hooks/useLyricOffset";
 import { useAutoLyrics } from "../hooks/useAutoLyrics";
 import { AutoLyricsBar } from "../components/song/AutoLyricsBar";
@@ -165,6 +165,10 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
   // 곡별 가사 싱크 보정(이 브라우저에 저장). 자동 찾은 가사는 기존 "싱크 보정(warp)"이 이미 시간표에 반영돼 있으니 중복 적용하지 않는다.
   const lyricOffset = useLyricOffset(song?.id);
   const offsetSec = auto.applied ? 0 : lyricOffset.offset;
+  // "현재 부분이 싱크 시작": 노래가 지금 부르는 가사 줄을 골라 누르면, 그 줄의 원래 시간과 현재 재생 시간의 차이로 전체 가사를 한 번에 옮긴다
+  const [anchorMode, setAnchorMode] = useState(false);
+  const [anchorIdx, setAnchorIdx] = useState<number | null>(null);
+  const [anchorMsg, setAnchorMsg] = useState("");
   const currentLineIndex = isSynced ? findCurrentLyricIndex(lyricLines, currentTime - offsetSec) : -1;
 
   const requesterName = useRequesterName(requestId, song?.id);
@@ -196,6 +200,34 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
     return t === undefined ? null : { pos: t, rate: getRate() };
   }, [getNow, getRate]);
   useLivePublisher(liveState, liveClock);
+
+  useEffect(() => {
+    setAnchorMode(false);
+    setAnchorIdx(null);
+    setAnchorMsg("");
+  }, [song?.id]);
+  const applyAnchor = () => {
+    const line = anchorIdx !== null ? lyricLines[anchorIdx] : undefined;
+    const now = getNow();
+    if (!line || line.time === null || now === undefined) {
+      setAnchorMsg(now === undefined ? "영상이 아직 준비되지 않았어요" : "가사 줄을 먼저 눌러 골라 주세요");
+      return;
+    }
+    if (auto.applied) {
+      // 자동 찾은 가사: 화면에 보이는 줄 시간(기존 보정 포함)을 지금으로 옮기도록 기존 보정에 차이를 더한다
+      const ok = auto.shiftWarp(Math.round((now - line.time) * 10) / 10);
+      setAnchorMsg(ok ? "선택한 줄이 지금 시작하도록 맞췄어요" : "값이 너무 커서 맞출 수 없어요");
+    } else {
+      const v = anchorOffset(line.time, now);
+      if (v === null) {
+        setAnchorMsg("값이 너무 커서 맞출 수 없어요 (±120초 이내만 가능)");
+        return;
+      }
+      lyricOffset.set(v);
+      setAnchorMsg(`전체 가사를 ${formatOffsetSec(v)}로 맞췄어요 (선택한 줄 원래 ${Math.floor(line.time / 60)}:${String(Math.floor(line.time % 60)).padStart(2, "0")} → 지금 ${Math.floor(now / 60)}:${String(Math.floor(now % 60)).padStart(2, "0")})`);
+    }
+    setAnchorMode(false);
+  };
 
   const lineRefs = useRef<Array<HTMLParagraphElement | null>>([]);
   // 노래방 표시: 바로 다음에 부를 줄(빈 줄 건너뜀) / 밝은 배경에서는 더 진한 강조색
@@ -360,6 +392,43 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
               +0.5
             </button>
           </div>
+        )}
+
+        {isSynced && (
+          <button
+            type="button"
+            onClick={() => {
+              setAnchorMsg("");
+              setAnchorIdx(!anchorMode && currentLineIndex >= 0 ? currentLineIndex : null);
+              setAnchorMode((v) => !v);
+            }}
+            aria-pressed={anchorMode}
+            data-testid="anchor-toggle"
+            title="지금 부르는 가사 줄을 골라, 전체 가사 타이밍을 한 번에 맞춰요"
+            className={`text-[12px] px-3 py-1.5 rounded-full border ${anchorMode ? `${tones.chipBg} ${tones.chipBorder} ${tones.base}` : `${tones.muted} border-transparent`}`}
+          >
+            싱크 맞추기
+          </button>
+        )}
+        {isSynced && anchorMode && (
+          <div className={`basis-full flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 ${tones.chipBg} ${tones.chipBorder}`} data-testid="anchor-panel">
+            <span className={`text-[12px] ${tones.base}`}>지금 노래가 나오는 가사 줄을 눌러 고른 뒤, 아래 버튼을 눌러 주세요. 모든 줄이 같은 만큼 함께 움직여요.</span>
+            <button
+              type="button"
+              onClick={applyAnchor}
+              disabled={anchorIdx === null}
+              data-testid="anchor-apply"
+              className="text-[12px] px-3 py-1.5 rounded-full border border-amber-400/70 bg-amber-400/20 text-amber-500 font-semibold disabled:opacity-40"
+            >
+              현재 부분이 싱크 시작
+            </button>
+            <span className={`text-[12px] ${tones.muted}`} data-testid="anchor-current">
+              현재 보정 {auto.applied ? formatOffsetSec(auto.warp.offset) : formatOffsetSec(lyricOffset.offset)}
+            </span>
+          </div>
+        )}
+        {anchorMsg && !anchorMode && (
+          <span role="status" className={`text-[12px] ${tones.muted}`} data-testid="anchor-msg">{anchorMsg}</span>
         )}
 
         {hasPron && (
@@ -635,8 +704,11 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
                   }}
                   data-testid="lyric-line"
                   data-role={role}
+                  data-anchor={anchorMode && anchorIdx === i ? "true" : undefined}
+                  onClick={anchorMode && line.time !== null ? () => setAnchorIdx(i) : undefined}
+                  role={anchorMode && line.time !== null ? "button" : undefined}
                   aria-current={isCurrent ? "true" : undefined}
-                  className={`break-words transition-all duration-300 ${
+                  className={`break-words transition-all duration-300 ${anchorMode && line.time !== null ? "cursor-pointer rounded hover:bg-amber-400/10" : ""} ${anchorMode && anchorIdx === i ? "ring-2 ring-amber-400/70 rounded" : ""} ${
                     isCurrent ? `${lightBg ? "text-amber-700" : "text-amber-500"} font-semibold scale-[1.03] origin-left` : ""
                   }`}
                   style={

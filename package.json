@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@patdx/kuromoji": "^1.0.4",
     "@supabase/supabase-js": "^2.112.3",
     "cmu-pronouncing-dictionary": "^3.0.0",
     "lucide-react": "^1.33.0",

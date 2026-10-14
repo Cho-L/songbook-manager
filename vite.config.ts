@@ -1,5 +1,33 @@
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { createReadStream, existsSync, readdirSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+/**
+ * 일본어 형태소 분석 사전(@patdx/kuromoji/dict, gz 12개)을 같은 사이트의 /kuromoji-dict/ 로 내보낸다.
+ * CDN에 의존하지 않고, node_modules 에서 복사하므로 저장소에는 사전 파일을 넣지 않는다.
+ * dev: 미들웨어로 제공 / build: 산출물(dist/kuromoji-dict/)에 포함. 일본어 발음을 처음 만들 때만 내려받는다.
+ */
+function kuromojiDictPlugin() {
+  const dir = join(process.cwd(), 'node_modules', '@patdx', 'kuromoji', 'dict')
+  return {
+    name: 'kuromoji-dict',
+    configureServer(server: import('vite').ViteDevServer) {
+      server.middlewares.use((req, res, next) => {
+        const m = /\/kuromoji-dict\/([\w.]+\.dat\.gz)(?:\?.*)?$/.exec(req.url ?? '')
+        if (!m || !existsSync(join(dir, m[1]))) return next()
+        res.setHeader('Content-Type', 'application/octet-stream')
+        createReadStream(join(dir, m[1])).pipe(res)
+      })
+    },
+    generateBundle(this: { emitFile(f: { type: 'asset'; fileName: string; source: Uint8Array }): string }) {
+      if (!existsSync(dir)) return
+      for (const f of readdirSync(dir).filter((n) => n.endsWith('.dat.gz'))) {
+        this.emitFile({ type: 'asset', fileName: `kuromoji-dict/${f}`, source: readFileSync(join(dir, f)) })
+      }
+    },
+  }
+}
 
 /**
  * 개발 서버(vite dev) 전용 미들웨어.
@@ -88,6 +116,6 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [react(), youtubeSearchDevMiddleware()],
+    plugins: [react(), youtubeSearchDevMiddleware(), kuromojiDictPlugin()],
   }
 })

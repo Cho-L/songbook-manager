@@ -1,7 +1,8 @@
-import type { CandidateSummary, LyricsCandidate, ScoredCandidate, SyncedLyricLine, TitleArtistAliases } from "./types";
+import type { CandidateSummary, MatchEvidence, LyricsCandidate, ScoredCandidate, SyncedLyricLine, TitleArtistAliases } from "./types";
 import { matchArtists } from "./artist";
 import { hasVersionWord, normalizeText, similarity, titleSimilarityScore } from "./text";
 import { hasHangul, hasLatin } from "./phonetic";
+import { loanwordScore } from "./loanword";
 
 // ---------------------------------------------------------------- 후보 점수
 
@@ -14,7 +15,9 @@ export const AUTO_ACCEPT_MIN_ARTIST = 0.55;
 export const AUTO_ACCEPT_MIN_TITLE = 0.6;
 
 export function scoreCandidate(song: { title: string; artist: string }, c: LyricsCandidate, aliases?: TitleArtistAliases): ScoredCandidate {
-  let titleSimilarity = titleSimilarityScore(song.title, c.title);
+  const baseTitleSim = titleSimilarityScore(song.title, c.title);
+  let titleSimilarity = baseTitleSim;
+  let aliasUsed = false;
   // 가수는 목록으로 나눠 순서/구분자/한글·영문 표기 차이를 흡수해서 비교한다. 가수 정보가 없는 곡은 중립(0.5)
   let artistSimilarity = song.artist.trim() ? matchArtists(song.artist, c.artist).score : 0.5;
   // 외부 메타데이터(MusicBrainz)가 알려 준 다른 언어 표기(꽃길 ↔ Flower Way, 김세정 ↔ Kim Sejeong)도 같은 기준으로 비교한다.
@@ -22,17 +25,62 @@ export function scoreCandidate(song: { title: string; artist: string }, c: Lyric
   if (aliases && (song.artist.trim() || aliases.trusted)) {
     for (const a of aliases.artists) artistSimilarity = Math.max(artistSimilarity, matchArtists(a, c.artist).score);
     if (artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST || (aliases.trusted && !song.artist.trim())) {
-      for (const t of aliases.titles) titleSimilarity = Math.max(titleSimilarity, titleSimilarityScore(t, c.title));
+      for (const t of aliases.titles) {
+        const v = titleSimilarityScore(t, c.title);
+        if (v > titleSimilarity) {
+          titleSimilarity = v;
+          aliasUsed = true;
+        }
+      }
     }
   }
+  // 번역된 제목은 글자로 비교할 수 없다. 제목 속 외래어(ロック ↔ 록)가 이어지면 약한 근거로만 인정한다 (상한 0.5, 자동 선택 불가)
+  const loan = titleSimilarity < 0.5 ? loanwordScore(song.title, c.title) : { score: 0, matches: [] };
+  if (loan.score > titleSimilarity) titleSimilarity = loan.score;
   // 저장된 곡 제목에는 없는 "Live/Remix/Cover" 같은 표시가 후보에만 있으면 다른 버전일 가능성이 크다
   const versionMismatch = hasVersionWord(c.title) && !hasVersionWord(song.title);
   const hasLyrics = Boolean(c.syncedLyrics || c.plainLyrics);
   let confidence = 0.55 * titleSimilarity + 0.3 * artistSimilarity + 0.1 * (c.syncedLyrics ? 1 : 0) + 0.05 * (hasLyrics ? 1 : 0);
   if (versionMismatch) confidence -= 0.15;
   confidence = Math.max(0, Math.min(1, confidence));
-  return { ...c, confidence, titleSimilarity, artistSimilarity, versionMismatch };
+  const evidence = buildEvidence(song, c, { titleSimilarity, artistSimilarity, confidence, aliasUsed, loan: loan.score > 0 && titleSimilarity === loan.score ? loan.matches : [], versionMismatch });
+  return { ...c, confidence, titleSimilarity, artistSimilarity, versionMismatch, evidence };
 }
+
+function scriptFamily(s: string): "ko" | "ja" | "en" | "other" {
+  return hasHangul(s) ? "ko" : /[\u3040-\u30FF\u4E00-\u9FFF]/.test(s) ? "ja" : hasLatin(s) ? "en" : "other";
+}
+
+function buildEvidence(
+  song: { title: string; artist: string },
+  c: LyricsCandidate,
+  m: { titleSimilarity: number; artistSimilarity: number; confidence: number; aliasUsed: boolean; loan: { ja: string; ko: string }[]; versionMismatch: boolean }
+): MatchEvidence {
+  const notes: string[] = [];
+  const hasArtist = Boolean(song.artist.trim());
+  const artist: MatchEvidence["artist"] = !hasArtist ? "unknown" : m.artistSimilarity >= 0.95 ? "exact" : m.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST ? "close" : "different";
+  const fa = scriptFamily(song.title);
+  const fb = scriptFamily(c.title);
+  let title: MatchEvidence["title"];
+  if (m.loan.length > 0) {
+    title = "loanword";
+    notes.push(`외래어 일부 일치: ${m.loan.map((x) => `${x.ja}↔${x.ko}`).join(", ")}`);
+  } else if (m.titleSimilarity >= 0.95) title = m.aliasUsed ? "alias" : "exact";
+  else if (m.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE) title = m.aliasUsed ? "alias" : "close";
+  else if (fa !== fb && fa !== "other" && fb !== "other") title = "unverified";
+  else title = "different";
+  if (m.aliasUsed) notes.push("저장된/확인된 다른 언어 표기로 제목을 비교했어요");
+  if (title === "unverified") notes.push("제목 표기 언어가 달라 같은 곡인지 글자로는 확인할 수 없어요");
+  if (m.versionMismatch) notes.push("라이브/리믹스 등 다른 버전일 수 있어요");
+  const t = { exact: "제목 일치", close: "제목 비슷함", alias: "별칭으로 제목 일치", loanword: "제목 일부 일치", unverified: "제목 확인 불가", different: "제목 다름" }[title];
+  const a = { exact: "아티스트 일치", close: "아티스트 비슷함", different: "아티스트 다름", unknown: "아티스트 정보 없음" }[artist];
+  const level: MatchEvidence["level"] =
+    m.confidence >= AUTO_ACCEPT_CONFIDENCE && m.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE && (!hasArtist || m.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST) ? "high" : m.confidence >= MEDIUM_CONFIDENCE ? "medium" : "low";
+  return { title, artist, level, label: `${a} · ${t}`, notes };
+}
+
+/** 정렬용 점수를 사람이 읽는 등급으로 (퍼센트는 확률이 아니라서 화면에 쓰지 않는다) */
+export const LEVEL_LABEL: Record<MatchEvidence["level"], string> = { high: "일치 근거 충분", medium: "확인 필요", low: "근거 부족" };
 
 /** high confidence: 점수 + 제목/가수 각각의 최소 조건까지 충족해야 사용자 확인 없이 자동 선택한다 */
 export function isAutoAccept(c: ScoredCandidate, songHasArtist: boolean): boolean {
