@@ -1,0 +1,457 @@
+{
+  "mode": "REAL(실제 LRCLIB/MusicBrainz)",
+  "results": [
+    {
+      "c": {
+        "n": 1,
+        "title": "무희",
+        "artist": "바운디",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "Vaundy"
+        ]
+      },
+      "outcome": "not-found",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "Vaundy [114b26ff-a1fe-41f3-9df8-5c093afe9c56] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "NA",
+          "note": "후보 0개 중 일치 없음 — 한글 제목은 '가수별 곡 찾기'로 직접 고르는 경로를 확인"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=무희&artist_name=바운디",
+          "status": 200,
+          "ms": 872
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=무희",
+          "status": 200,
+          "ms": 845
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=무희&artist_name=Vaundy",
+          "status": 503,
+          "ms": 589
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=무희+바운디",
+          "status": 200,
+          "ms": 690
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=무희+Vaundy",
+          "status": 200,
+          "ms": 581
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/artist?query=artist:\"Vaundy\"&limit=5&fmt=json",
+          "status": 200,
+          "ms": 792
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?query=arid:114b26ff-a1fe-41f3-9df8-5c093afe9c56+AND+recording:\"무희\"&limit=10&fmt=json",
+          "status": 200,
+          "ms": 261
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=Vaundy",
+          "status": 429,
+          "ms": 331
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=Vaundy+Engawa",
+          "status": 200,
+          "ms": 606
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/artist?query=artist:\"Vaundy\"+OR+alias:\"Vaundy\"&limit=8&fmt=json",
+          "status": 200,
+          "ms": 247
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=114b26ff-a1fe-41f3-9df8-5c093afe9c56&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 235
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: not-found"
+      ]
+    },
+    {
+      "c": {
+        "n": 2,
+        "title": "무희",
+        "artist": "VAUNDY",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "Vaundy"
+        ]
+      },
+      "outcome": "needs-choice",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "Vaundy [114b26ff-a1fe-41f3-9df8-5c093afe9c56] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "PASS",
+          "note": "踊り子 / Vaundy · 아티스트 일치 · 제목 확인 불가 · 후보로 표시(직접 선택)"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=무희&artist_name=VAUNDY",
+          "status": 200,
+          "ms": 582
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=무희+VAUNDY",
+          "status": 503,
+          "ms": 583
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?q=Vaundy",
+          "status": 200,
+          "ms": 1107
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=114b26ff-a1fe-41f3-9df8-5c093afe9c56&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 246
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: needs-choice (제목 표기가 달라서(한글↔원어/영문) 자동으로 고르지 못했어요. 가수는 같은 곡들이에요 — 미리보기로 가사를 확인하고 맞는 곡을 골라 주세요)"
+      ]
+    },
+    {
+      "c": {
+        "n": 3,
+        "title": "Odoriko",
+        "artist": "Vaundy",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "Vaundy"
+        ]
+      },
+      "outcome": "synced",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "Vaundy [114b26ff-a1fe-41f3-9df8-5c093afe9c56] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "PASS",
+          "note": "odoriko / Vaundy · 아티스트 일치 · 제목 일치 · 자동 선택됨"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=Odoriko&artist_name=Vaundy",
+          "status": 200,
+          "ms": 362
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=114b26ff-a1fe-41f3-9df8-5c093afe9c56&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 238
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: synced"
+      ]
+    },
+    {
+      "c": {
+        "n": 4,
+        "title": "踊り子",
+        "artist": "Vaundy",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "Vaundy"
+        ]
+      },
+      "outcome": "synced",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "Vaundy [114b26ff-a1fe-41f3-9df8-5c093afe9c56] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "PASS",
+          "note": "踊り子 / Vaundy · 아티스트 일치 · 제목 일치 · 자동 선택됨"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=踊り子&artist_name=Vaundy",
+          "status": 200,
+          "ms": 336
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=114b26ff-a1fe-41f3-9df8-5c093afe9c56&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 237
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: synced"
+      ]
+    },
+    {
+      "c": {
+        "n": 5,
+        "title": "너는 록을 듣지 않아",
+        "artist": "아이묭",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "あいみょん",
+          "Aimyon"
+        ]
+      },
+      "outcome": "API_ERROR(server)",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "あいみょん [908d9ac2-5187-4b9e-b281-601c6afb0791] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "BLOCKED",
+          "note": "모든 검색 요청 실패 (503)"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=너는+록을+듣지+않아&artist_name=아이묭",
+          "status": 503,
+          "ms": 590
+        },
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=너는+록을+듣지+않아",
+          "status": 503,
+          "ms": 832
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/artist?query=artist:\"あいみょん\"+OR+alias:\"あいみょん\"&limit=8&fmt=json",
+          "status": 200,
+          "ms": 247
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=908d9ac2-5187-4b9e-b281-601c6afb0791&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 234
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: API_ERROR(server) — 가사 없음이 아니라 서비스 오류"
+      ]
+    },
+    {
+      "c": {
+        "n": 6,
+        "title": "君はロックを聴かない",
+        "artist": "あいみょん",
+        "titleRe": {},
+        "artistRe": {},
+        "names": [
+          "あいみょん",
+          "Aimyon"
+        ]
+      },
+      "outcome": "synced",
+      "checks": [
+        {
+          "name": "아티스트 식별(MusicBrainz)",
+          "verdict": "PASS",
+          "note": "あいみょん [908d9ac2-5187-4b9e-b281-601c6afb0791] JP"
+        },
+        {
+          "name": "올바른 곡 후보 표시",
+          "verdict": "PASS",
+          "note": "君はロックを聴かない (Live in 阪神甲子園球場, 2022.11.05) / あいみょん · 아티스트 일치 · 제목 일치 · 자동 선택됨"
+        },
+        {
+          "name": "아티스트별 곡 목록 조회",
+          "verdict": "BLOCKED",
+          "note": "서비스 오류 응답: MusicBrainz 400"
+        },
+        {
+          "name": "곡 선택 후 가사 조회",
+          "verdict": "NA",
+          "note": "곡 목록에서 곡을 고르지 못해 건너뜀"
+        },
+        {
+          "name": "싱크 가사 여부",
+          "verdict": "NA",
+          "note": "가사 후보 없음"
+        },
+        {
+          "name": "사용자가 곡을 선택할 수 있음",
+          "verdict": "NA",
+          "note": "곡 목록 없음"
+        }
+      ],
+      "requests": [
+        {
+          "service": "LRCLIB",
+          "path": "/api/search?track_name=君はロックを聴かない&artist_name=あいみょん",
+          "status": 200,
+          "ms": 327
+        },
+        {
+          "service": "MusicBrainz",
+          "path": "/ws/2/recording?artist=908d9ac2-5187-4b9e-b281-601c6afb0791&inc=aliases+artist-credits+releases&limit=100&offset=0&fmt=json",
+          "status": 400,
+          "ms": 236
+        }
+      ],
+      "lines": [
+        "앱 검색 결과: synced (찾은 곡이 라이브/리믹스 등 다른 버전일 수 있어요)"
+      ]
+    }
+  ]
+}

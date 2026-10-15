@@ -66,7 +66,7 @@ export function QueueOverlayView({ queue, settings: s, box, stale }: Props) {
         {s.sc && view.playing && renderItem(view.playing.id, "▶", view.playing, true)}
         {s.sn && view.upcoming.map((it, i) => renderItem(it.id, i === 0 && !view.playing ? "다음" : i + 1, it))}
         {queue && !hasAny && <div style={{ opacity: 0.75, fontSize: "0.8em" }} data-testid="qo-empty">대기 중인 신청곡이 없어요</div>}
-        {!queue && <div style={{ opacity: 0.6, fontSize: "0.8em" }}>불러오는 중…</div>}
+        {!queue && <div style={{ opacity: 0.6, fontSize: "0.8em" }} data-testid="qo-loading">{stale ? "대기열 서버에 연결하지 못했어요 (다시 시도 중)" : "불러오는 중…"}</div>}
         {s.sn && view.more > 0 && <div style={{ opacity: 0.75, fontSize: "0.7em", marginTop: `${s.gap / 10}em` }} data-testid="qo-more">외 {view.more}곡 대기 중</div>}
         {stale && <span title="서버 연결을 확인하는 중이에요" data-testid="qo-stale" style={{ position: "absolute", top: 4, right: 4, width: 8, height: 8, borderRadius: 4, background: "#f59e0b" }} />}
       </div>

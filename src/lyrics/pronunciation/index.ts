@@ -1,7 +1,7 @@
 import { englishToHangul, type CmuDict } from "./english";
 import { isKana, isKanji, japaneseToHangul, type PronStatus } from "./kana";
 import { analyzeJapanese } from "./japanese";
-import { loadJaTokenizer, type JaTokenizer } from "./tokenizer";
+import { loadJaTokenizer, subscribeDictProgress, type JaTokenizer } from "./tokenizer";
 
 export type { PronStatus } from "./kana";
 export type { CmuDict } from "./english";
@@ -134,15 +134,19 @@ export function isSavablePron(pron: string): boolean {
  * 일본어 줄이 있을 때만 형태소 분석기(사전 포함), 영어가 있을 때만 영어 발음 사전.
  * 로드 실패는 전체 실패가 아니라 경고로 돌려준다 (가능한 줄만 변환).
  */
-export async function runPronunciation(texts: string[], onProgress?: (done: number, total: number) => void): Promise<{ rows: PronLine[]; warnings: string[] }> {
+export async function runPronunciation(texts: string[], onProgress?: (done: number, total: number) => void, onStage?: (text: string) => void): Promise<{ rows: PronLine[]; warnings: string[] }> {
   const warnings: string[] = [];
   let tokenizer: JaTokenizer | undefined;
   let dict: CmuDict | undefined;
   if (needsJaTokenizer(texts)) {
+    const off = onStage ? subscribeDictProgress((d, t) => onStage(`일본어 사전을 내려받는 중 (${d}/${t}) — 처음 한 번만 약 18MB`)) : undefined;
+    onStage?.("일본어 사전을 불러오는 중 — 처음 한 번만 약 18MB");
     try {
       tokenizer = await loadJaTokenizer();
     } catch {
       warnings.push("일본어 분석 사전을 불러오지 못했어요 — 한자가 있는 줄은 변환하지 못했어요. 잠시 후 다시 시도해 주세요.");
+    } finally {
+      off?.();
     }
   }
   if (needsEnglishDict(texts)) {

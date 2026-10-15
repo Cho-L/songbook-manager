@@ -45,7 +45,7 @@ function toHiragana(s: string): string {
 }
 
 export function isKana(ch: string): boolean {
-  return /[぀-ゟ゠-ヿ]/.test(ch);
+  return /[\u3040-\u309F\u30A0-\u30FA\u30FC-\u30FF]/.test(ch); // ・(U+30FB)는 가나가 아니라 구두점이다
 }
 export function isKanji(ch: string): boolean {
   return /[一-鿿㐀-䶿々〆]/.test(ch);
@@ -142,6 +142,13 @@ export function kanaToHangul(kana: string, onHaHe?: () => void): string {
       continue;
     }
     // 작은 모음 (ファ, ティ 등): 앞 글자의 모음을 바꾼다
+    if (next && SMALL_VOWEL[next] && A[c] && A[c][1] === SMALL_VOWEL[next]) {
+      // 같은 모음의 작은 글자는 길게 늘이는 소리 (ねぇ → 네에, あぁ → 아아)
+      push(compose(A[c][0], A[c][1]));
+      push(compose("ㅇ", SMALL_VOWEL[next]));
+      i++;
+      continue;
+    }
     if (next && SMALL_VOWEL[next] && A[c]) {
       const [cho] = A[c];
       const special: Record<string, Cho> = { ふ: "ㅍ", つ: "ㅊ", て: "ㅌ", で: "ㄷ", ゔ: "ㅂ", し: "ㅅ", ち: "ㅊ", じ: "ㅈ" };

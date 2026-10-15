@@ -109,3 +109,21 @@ export function toQueueView(queue: PublicQueue | null, n: number): QueueView {
 export function nextPollDelay(failures: number, baseMs = 4000): number {
   return failures <= 0 ? baseMs : Math.min(20000, baseMs * 2 ** Math.min(failures, 4));
 }
+
+/**
+ * 관리자 화면의 대기열과 서버의 "공개 대기열"(OBS 대기열 화면이 읽는 것)이 같은지 비교한다.
+ * synced: 같은 곡이 같은 순서로 공개 대기열에 있다 / pending: 다르다(곧 따라오거나 서버 반영 전) / unknown: 공개 대기열을 못 읽었다.
+ * 주의: 이것은 "서버가 OBS 에 줄 내용"이 맞는지만 알려 준다. OBS 브라우저 소스가 지금 열려 있는지는 알 수 없다.
+ */
+export function compareQueues(
+  admin: { id: string; status: string; position: number }[],
+  pub: { queue: { id: string; status: string }[] } | null
+): "synced" | "pending" | "unknown" {
+  if (!pub) return "unknown";
+  const a = admin
+    .filter((r) => r.status === "approved" || r.status === "playing")
+    .sort((x, y) => Number(y.status === "playing") - Number(x.status === "playing") || x.position - y.position)
+    .map((r) => `${r.id}:${r.status}`);
+  const b = pub.queue.map((r) => `${r.id}:${r.status}`);
+  return a.length === b.length && a.every((v, i) => v === b[i]) ? "synced" : "pending";
+}

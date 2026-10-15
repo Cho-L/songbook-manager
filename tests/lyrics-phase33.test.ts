@@ -194,3 +194,18 @@ test("검색: 가수 정보 없는 곡·별칭 없는 곡도 점수가 깨지지
   assert.equal(s.evidence?.artist, "unknown");
   assert.ok(s.confidence > 0.5);
 });
+
+test("일본어 발음(QA 회귀): 인사말 は=와, 작은 모음 장음, ・ 구두점, 괄호, 一日", () => {
+  assert.equal(P("こんにちは、世界！").text, "콘니치와、 세카이！");
+  assert.equal(P("こんばんは").text, "콘반와");
+  assert.equal(P("ねぇ").text, "네에");
+  const b = P("今夜はブギー・バック");
+  assert.equal(b.status, "ok"); // ・ 는 변환 안 된 글자가 아니다
+  assert.equal(hasUnconverted("부기이・밧쿠"), false);
+  assert.equal(P("「ありがとう」").text, "「아리가토오」");
+  const d = P("一日中");
+  assert.equal(d.status, "review");
+  assert.ok(d.uncertain.includes("一日"));
+  assert.equal(P("行っちゃう").text, "잇차우");
+  assert.equal(P("夢を見ていたんだ").text, "유메오 미테 이탄다");
+});

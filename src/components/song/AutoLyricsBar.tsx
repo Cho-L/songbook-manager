@@ -3,6 +3,7 @@ import type { useAutoLyrics } from "../../hooks/useAutoLyrics";
 import { describeStatus } from "../../hooks/useAutoLyrics";
 import { setAutoLyricsEnabled } from "../../lyrics/cache";
 import { LyricsCandidatePanel } from "./LyricsCandidatePanel";
+import { ArtistSongBrowser } from "./ArtistSongBrowser";
 import { PronunciationPanel } from "./PronunciationPanel";
 import { SYNC_STEP_TENTHS, formatOffset, formatStep, readSyncStep, writeSyncStep } from "../../lyrics/warp";
 
@@ -73,6 +74,8 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
         <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} ids={auto.entry.options.map((o) => o.id)} />
       )}
       {showMore && status.kind !== "needs-choice" && <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} />}
+
+      {(showMore || status.kind === "needs-choice" || status.kind === "not-found") && !auto.ownSynced && <ArtistSongBrowser key={auto.rawSong?.id} auto={auto} mrDuration={mrDuration} />}
 
       <div className="flex flex-wrap items-center gap-2 mt-2">
         {canTune && (

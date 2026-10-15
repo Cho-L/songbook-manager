@@ -36,6 +36,12 @@ export const ARTIST_ALIAS_GROUPS: string[][] = [
   ["아도", "Ado", "アド"],
   ["킹누", "King Gnu", "キングヌー"],
   ["스피츠", "スピッツ", "Spitz"],
+  ["바운디", "Vaundy", "VAUNDY"],
+  ["요루시카", "ヨルシカ", "Yorushika"],
+  ["후지이 카제", "藤井風", "Fujii Kaze"],
+  ["래드윔프스", "RADWIMPS", "ラッドウィンプス"],
+  ["미세스 그린 애플", "Mrs. GREEN APPLE", "ミセスグリーンアップル"],
+  ["원 오크 락", "ONE OK ROCK", "ワンオクロック"],
 ];
 
 /** 같은 곡의 서로 다른 제목 표기 묶음 (artist 가 있으면 그 가수의 곡일 때만 적용 — 동명이곡 오탐 방지) */

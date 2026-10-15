@@ -12,7 +12,7 @@ import { MusicBrainzAliasProvider } from "../lyrics/providers/musicbrainz";
 import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyricsDetailed, searchRanked } from "../lyrics/pipeline";
 import { clampWarp, compareDurations, isIdentity, nudgeOffset, warpFromAnchors } from "../lyrics/warp";
 import type { Anchor } from "../lyrics/warp";
-import type { AliasProvider, LyricsProvider, ScoredCandidate, SyncEntry } from "../lyrics/types";
+import type { AliasProvider, ArtistCatalog, LyricsProvider, ScoredCandidate, SyncEntry } from "../lyrics/types";
 
 /** 화면에 보여 줄 자동 가사/싱크 상태 */
 export type AutoStatusKind =
@@ -37,11 +37,17 @@ export interface AutoStatus {
 }
 
 let provider: LyricsProvider = new LrclibProvider();
-let aliasProvider: AliasProvider | undefined = new MusicBrainzAliasProvider();
-/** 테스트/다른 provider 연결용 */
-export function setLyricsProvider(p: LyricsProvider, alias?: AliasProvider): void {
+const defaultMb = new MusicBrainzAliasProvider(undefined, undefined, 1000);
+let aliasProvider: AliasProvider | undefined = defaultMb;
+let catalog: ArtistCatalog | undefined = defaultMb;
+/** 테스트/다른 provider 연결용 (alias 가 아티스트 검색도 지원하면 그대로 아티스트 탐색에도 쓴다) */
+export function setLyricsProvider(p: LyricsProvider, alias?: AliasProvider, cat?: ArtistCatalog): void {
   provider = p;
   aliasProvider = alias;
+  catalog = cat ?? (alias && "searchArtists" in alias ? (alias as unknown as ArtistCatalog) : undefined);
+}
+export function getArtistCatalog(): ArtistCatalog | undefined {
+  return catalog;
 }
 
 export function describeStatus(args: {
@@ -221,6 +227,34 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     }
   }, [songId, title, artist, ownLyrics, known]);
 
+  /**
+   * 아티스트 곡 목록(MusicBrainz)에서 사용자가 직접 고른 곡으로 가사 후보를 다시 찾는다 (LRCLIB).
+   * 이 곡의 원어 제목·MusicBrainz 가 알려 준 다른 표기로 찾고, 결과를 후보 목록(pool)으로 바꾼다. 자동 선택은 하지 않는다.
+   * 돌려주는 값은 이번 검색에서 나온 후보 id 들 (화면에서 이 후보만 보여 주려고).
+   */
+  const searchForRecording = useCallback(
+    async (rec: { title: string; altTitles: string[]; artist: string; artistAliases: string[] }): Promise<string[]> => {
+      if (!songId) return [];
+      setListing(true);
+      setError(null);
+      try {
+        const ranked = await searchRanked(
+          { songId, title: rec.title, artist: rec.artist, ownLyrics, titleAliases: rec.altTitles, artistAliases: rec.artistAliases },
+          provider
+        );
+        poolRef.current = ranked;
+        setPool(ranked);
+        return ranked.map((c) => c.id);
+      } catch (e) {
+        if (!isAbort(e)) setError(describeLyricsError(e));
+        return [];
+      } finally {
+        setListing(false);
+      }
+    },
+    [songId, ownLyrics]
+  );
+
   const previewOf = useCallback(
     (candidateId: string, mrDuration?: number): CandidatePreview | null => {
       const c = poolRef.current.find((x) => x.id === candidateId) ?? pool.find((x) => x.id === candidateId);
@@ -304,6 +338,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     candidates: pool,
     listing,
     loadCandidates,
+    searchForRecording,
     previewOf,
     applyCandidate,
     undoApply,

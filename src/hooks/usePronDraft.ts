@@ -12,6 +12,7 @@ export type DraftRow = PronLine & { edited?: boolean };
 export function usePronDraft(texts: string[], enabled: boolean) {
   const key = texts.join("\n");
   const [state, setState] = useState<{ key: string; rows: DraftRow[]; warnings: string[]; loading: boolean }>({ key: "", rows: [], warnings: [], loading: false });
+  const [stage, setStage] = useState("");
   const token = useRef(0);
   const textsRef = useRef(texts);
   useEffect(() => {
@@ -25,8 +26,9 @@ export function usePronDraft(texts: string[], enabled: boolean) {
   const generate = useCallback(async (k: string) => {
     const my = ++token.current;
     try {
-      const { rows, warnings } = await runPronunciation(textsRef.current);
+      const { rows, warnings } = await runPronunciation(textsRef.current, undefined, (t) => my === token.current && setStage(t));
       if (my !== token.current) return;
+      setStage("");
       setState({ key: k, rows, warnings, loading: false });
     } catch {
       if (my !== token.current) return;
@@ -37,10 +39,8 @@ export function usePronDraft(texts: string[], enabled: boolean) {
   useEffect(() => {
     if (!enabled || !hasTarget) return;
     if (state.key === key) return;
-    void generate(key);
-    return () => {
-      // 키가 바뀌면 진행 중이던 요청은 token 증가로 무효화된다
-    };
+    const h = setTimeout(() => void generate(key), 0);
+    return () => clearTimeout(h);
   }, [enabled, hasTarget, key, state.key, generate]);
 
   const edit = useCallback((i: number, value: string) => {
@@ -50,8 +50,9 @@ export function usePronDraft(texts: string[], enabled: boolean) {
   const regenerate = useCallback(async () => {
     const my = ++token.current;
     setState((s) => ({ ...s, loading: true }));
-    const { rows, warnings } = await runPronunciation(textsRef.current);
+    const { rows, warnings } = await runPronunciation(textsRef.current, undefined, (t) => my === token.current && setStage(t));
     if (my !== token.current) return;
+    setStage("");
     setState((s) => ({ ...s, loading: false, warnings, rows: rows.map((r, i) => (s.rows[i]?.edited ? s.rows[i] : r)) }));
   }, []);
 
@@ -64,6 +65,7 @@ export function usePronDraft(texts: string[], enabled: boolean) {
     loading: enabled && hasTarget && (!ready || state.loading),
     rows,
     warnings: ready ? state.warnings : [],
+    stage,
     prons,
     edit,
     regenerate,

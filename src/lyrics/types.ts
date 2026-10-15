@@ -79,6 +79,50 @@ export interface AliasProvider {
   lookup(title: string, artist: string, signal?: AbortSignal): Promise<TitleArtistAliases>;
 }
 
+/** MusicBrainz 가 알려 주는 아티스트 한 명 (이름이 같은 다른 사람을 구분하는 데 쓴다 — mbid 가 같아야 같은 아티스트) */
+export interface ArtistHit {
+  mbid: string;
+  name: string;
+  sortName?: string;
+  disambiguation?: string;
+  country?: string;
+  type?: string;
+  /** MusicBrainz 에 등록된 다른 표기(원어/로마자/한글 등) */
+  aliases: string[];
+  /** 검색 점수 0~100 (정렬용) */
+  score: number;
+}
+
+/** MusicBrainz 에 등록된 녹음(곡) 하나 */
+export interface ArtistRecording {
+  mbid: string;
+  title: string;
+  /** 초 */
+  length?: number;
+  disambiguation?: string;
+  /** 같은 곡의 다른 표기 (로마자 별칭, 수록 릴리스 제목 등 — MusicBrainz 가 알려 준 값만) */
+  altTitles: string[];
+  /** 크레딧에 적힌 아티스트 표기 */
+  credit: string;
+  /** 라이브/리믹스/인스트루멘탈 등 다른 버전으로 보이는가 */
+  isVersion: boolean;
+}
+
+export interface RecordingPage {
+  /** MusicBrainz 가 알려 준 이 아티스트의 전체 녹음 수 (등록된 범위) */
+  total: number;
+  offset: number;
+  /** 이번에 받은 원본 개수 (다음 offset 계산용) */
+  rawCount: number;
+  items: ArtistRecording[];
+}
+
+/** 아티스트 검색 + 아티스트별 곡 목록 (MusicBrainz) */
+export interface ArtistCatalog {
+  searchArtists(name: string, signal?: AbortSignal): Promise<ArtistHit[]>;
+  browseRecordings(mbid: string, offset: number, signal?: AbortSignal): Promise<RecordingPage>;
+}
+
 // ---------------------------------------------------------------- 싱크 엔진 추상화
 
 export interface ReferenceAudio {

@@ -33,18 +33,59 @@ export async function maybeGunzip(buf: ArrayBuffer): Promise<ArrayBuffer> {
   return buf;
 }
 
+/** 사전 다운로드 진행 (받은 파일 수 / 전체 12개) — 처음 한 번만 약 18MB 라서 화면에 진행 상황을 보여 준다 */
+export const DICT_FILE_COUNT = 12;
+type ProgressFn = (done: number, total: number) => void;
+const listeners = new Set<ProgressFn>();
+let filesDone = 0;
+export function subscribeDictProgress(fn: ProgressFn): () => void {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+const CACHE_NAME = "songbook-kuromoji-dict-v1";
+/**
+ * Cache Storage 에 사전 파일을 보관해서 재방문 때 다시 내려받지 않는다 (서버 캐시 헤더와 무관하게 동작).
+ * 저장소를 못 쓰는 환경(시크릿 모드 등)에서는 조용히 일반 fetch 로 대체한다. 같은 파일을 두 번 받지는 않는다.
+ */
+async function cachedFetch(url: string, doFetch: typeof fetch): Promise<Response> {
+  let cache: Cache | undefined;
+  try {
+    if (typeof caches !== "undefined") {
+      cache = await caches.open(CACHE_NAME);
+      const hit = await cache.match(url);
+      if (hit) return hit;
+    }
+  } catch {
+    cache = undefined;
+  }
+  const res = await doFetch(url);
+  if (cache && res.ok) {
+    try {
+      await cache.put(url, res.clone());
+    } catch {
+      // 용량 부족 등: 캐시만 포기한다
+    }
+  }
+  return res;
+}
+
 let pending: Promise<JaTokenizer> | null = null;
 export function loadJaTokenizer(opts: { fetchImpl?: typeof fetch; base?: string } = {}): Promise<JaTokenizer> {
   if (pending) return pending;
   const doFetch = opts.fetchImpl ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const base = opts.base ?? dictBaseUrl();
+  filesDone = 0;
   const p = (async () => {
     const mod = await import("@patdx/kuromoji");
     const loader = {
       async loadArrayBuffer(file: string): Promise<ArrayBufferLike> {
-        const res = await doFetch(base + file);
+        const res = await cachedFetch(base + file, doFetch);
         if (!res.ok) throw new Error(`사전 파일을 받지 못했어요 (${file}, ${res.status})`);
-        return maybeGunzip(await res.arrayBuffer());
+        const out = await maybeGunzip(await res.arrayBuffer());
+        filesDone++;
+        listeners.forEach((fn) => fn(Math.min(filesDone, DICT_FILE_COUNT), DICT_FILE_COUNT));
+        return out;
       },
     };
     const tk = await new mod.TokenizerBuilder({ loader }).build();

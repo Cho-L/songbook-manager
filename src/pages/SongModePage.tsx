@@ -381,7 +381,7 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
             <button
               type="button"
               onClick={lyricOffset.reset}
-              className={`px-1.5 py-1.5 text-[12px] min-w-[3.6rem] text-center ${lyricOffset.offset === 0 ? tones.muted : "text-amber-500 font-semibold"}`}
+              className={`px-1.5 py-1.5 text-[12px] min-w-[3.6rem] text-center ${lyricOffset.offset === 0 ? tones.muted : `${lightBg ? "text-amber-700" : "text-amber-500"} font-semibold`}`}
               aria-label="보정 초기화 (0초)"
               title="눌러서 0초로 초기화"
               data-testid="offset-value"
@@ -418,7 +418,7 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
               onClick={applyAnchor}
               disabled={anchorIdx === null}
               data-testid="anchor-apply"
-              className="text-[12px] px-3 py-1.5 rounded-full border border-amber-400/70 bg-amber-400/20 text-amber-500 font-semibold disabled:opacity-40"
+              className={`text-[12px] px-3 py-1.5 rounded-full border font-semibold disabled:opacity-40 ${lightBg ? "border-amber-700/60 bg-amber-500/15 text-amber-800" : "border-amber-400/70 bg-amber-400/20 text-amber-500"}`}
             >
               현재 부분이 싱크 시작
             </button>
@@ -681,7 +681,10 @@ export function SongModePage({ songs, loading, onUpdate }: SongModePageProps) {
           </pre>
         )}
 
-        <AutoLyricsBar auto={auto} currentTime={currentTime} mrDuration={duration} />
+        {/* 자동 가사 영역은 부모 글자색을 따른다. 밝은 배경에서는 기본(밝은) 글자색이 안 보이므로 어두운 글자색을 준다 */}
+        <div className={lightBg ? "text-black/85" : undefined} data-testid="auto-lyrics-wrap">
+          <AutoLyricsBar auto={auto} currentTime={currentTime} mrDuration={duration} />
+        </div>
 
         {lyricLines.length > 0 ? (
           <div

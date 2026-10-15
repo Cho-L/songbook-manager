@@ -136,7 +136,7 @@ function CandidateDetail({ auto, preview, candId, mrDuration, ownerId }: { auto:
                     {includePron && (
                       <div className="opacity-75 mt-0.5" data-testid="cand-pron-status" data-state={pron.loading ? "loading" : "done"}>
                         {pron.loading
-                          ? "한글 발음을 만드는 중이에요..."
+                          ? (pron.stage || "한글 발음을 만드는 중이에요...")
                           : `발음 ${pron.counts.ok}줄${pron.counts.review > 0 ? ` · 확인 필요 ${pron.counts.review}줄` : ""}${pron.counts.failed > 0 ? ` · 변환 못 한 ${pron.counts.failed}줄은 발음 없이 저장돼요` : ""}`}
                       </div>
                     )}

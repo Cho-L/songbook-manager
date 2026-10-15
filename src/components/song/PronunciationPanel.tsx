@@ -51,7 +51,7 @@ export function PronunciationPanel({ auto }: { auto: Auto }) {
     setProgress("준비하는 중...");
     try {
       const texts = lines.map((l) => l.text);
-      const { rows: gen, warnings: w } = await runPronunciation(texts, (d, t) => setProgress(`${d}/${t}줄`));
+      const { rows: gen, warnings: w } = await runPronunciation(texts, (d, t) => setProgress(`${d}/${t}줄`), (t) => setProgress(t));
       setWarnings(w);
       setRows((cur) =>
         lines.map((l, i) => {

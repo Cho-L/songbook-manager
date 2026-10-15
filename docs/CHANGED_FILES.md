@@ -98,3 +98,24 @@ DB/스키마 변경: 없음
 신규: `src/lyrics/pronunciation/{japanese,tokenizer}.ts`, `src/lyrics/loanword.ts`, `src/hooks/usePronDraft.ts`, `tests/lyrics-phase33.test.ts`, `docs/lyrics-phase33.md`, `public/_headers`
 수정: `src/lyrics/pronunciation/{kana,index}.ts`, `src/lyrics/{matching,text,types,lyricOffset}.ts`, `src/hooks/{useAutoLyrics,useLyricOffset}.ts`, `src/components/song/{PronunciationPanel,LyricsCandidatePanel}.tsx`, `src/pages/SongModePage.tsx`, `vite.config.ts`(사전 복사 플러그인), `package.json`(+`@patdx/kuromoji`), `tests/lyrics-phase31.test.ts`
 DB/스키마 변경: 없음
+
+
+## Phase 3.4 (통합 QA·안정화)
+신규: `docs/qa-phase34.md`, `tests/manual/real-api-check.ts`(실제 LRCLIB/MusicBrainz 확인용, 자동 테스트 아님)
+수정: `src/lyrics/pronunciation/{japanese,kana,tokenizer,index}.ts`(인사말 は, ・, 一日, 장음, 기호 띄어쓰기, 사전 진행 표시·Cache Storage), `src/hooks/usePronDraft.ts`, `src/components/song/{LyricsCandidatePanel,PronunciationPanel}.tsx`(적용 버튼 잠금·진행 문구), `src/pages/SongModePage.tsx`(밝은 테마 대비), `tests/lyrics-phase33.test.ts`
+DB/스키마/Auth/RLS 변경: 없음
+
+## Phase 3.5 — 다국어 검색 / 아티스트별 곡 탐색
+- 수정: `src/lyrics/providers/musicbrainz.ts`, `src/lyrics/searchPlan.ts`, `src/lyrics/types.ts`, `src/hooks/useAutoLyrics.ts`, `src/components/song/AutoLyricsBar.tsx`, `src/data/aliasSeed.ts`, `tests/manual/real-api-check.ts`
+- 신규: `src/lyrics/catalog.ts`, `src/components/song/ArtistSongBrowser.tsx`, `tests/lyrics-phase35.test.ts`, `docs/lyrics-phase35.md`
+- DB/스키마/Repository 변경 없음.
+
+## Phase 3.6 — 방송 실전 사용성
+- 수정: `src/pages/RequestQueuePage.tsx`, `src/utils/queueOverlay.ts`, `src/components/overlay/QueueOverlayView.tsx`
+- 신규: `tests/queue-phase36.test.ts`, `docs/phase36-broadcast.md`
+- DB/스키마/Auth/RLS/Repository 변경 없음.
+
+## Phase 3.7 — 실사용 검증/출시 준비
+- 수정: `src/pages/SongModePage.tsx`(밝은 배경에서 자동 가사 영역 글자색), `tests/manual/real-api-check.ts`(재작성: 요청/상태/단계별 판정/보고서), `package.json`(check:real-api 스크립트 2개)
+- 신규: `tests/backup-roundtrip.test.ts`, `docs/phase37-release-readiness.md`, `docs/windows-real-test-guide.md`
+- DB/스키마/Auth/RLS/Repository/Import·Export 로직/Playlist/YouTube 로직 변경 없음.

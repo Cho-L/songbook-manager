@@ -157,10 +157,13 @@ export async function searchCandidates(
   const T = input.title.trim();
   const A = input.artist.trim();
   const hasKnown = (known.titles?.length ?? 0) + (known.artists?.length ?? 0) > 0;
-  if (!(hasHangul(T) || hasHangul(A) || hasKnown)) return done();
+  // 한글/별칭이 있으면 기존 확장 검색 전체, 그 밖에도 가수가 있고 아직 못 찾았다면 MusicBrainz 조회는 시도한다
+  // (예: 로마자 제목 Odoriko ↔ 원어 제목 踊り子 — 번역이 아니라 MusicBrainz 에 등록된 표기로 잇는다)
+  const expand = hasHangul(T) || hasHangul(A) || hasKnown;
+  if (!expand && !(aliasProvider && hasArtist)) return done();
 
   const nonHangul = (xs?: string[]) => (xs ?? []).find((x) => x.trim() && !hasHangul(x));
-  if (provider.searchQuery) {
+  if (expand && provider.searchQuery) {
     const q = [T, A].filter(Boolean).join(" ");
     if (await run("free-text", `q:${q}`, () => provider.searchQuery!(q, signal))) return done();
     // 별칭으로 자유 검색 (원어 제목 + 원어 가수)

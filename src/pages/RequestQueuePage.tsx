@@ -7,10 +7,11 @@ import { getChromeCssVars } from "../utils/color";
 import {
   RequestConflictError,
   getAdminRequestRepository,
+  getPublicRequestClient,
   normalizeSettings,
 } from "../services/songRequestRepository";
-import { DEFAULT_QUEUE_OVERLAY, buildQueueOverlayUrl, type QueueOverlaySettings } from "../utils/queueOverlay";
-import { canTransition, moveInOrder, type RequestSettings, type RequestStatus, type SongRequest } from "../utils/songRequest";
+import { DEFAULT_QUEUE_OVERLAY, buildQueueOverlayUrl, compareQueues, type QueueOverlaySettings } from "../utils/queueOverlay";
+import { canTransition, moveInOrder, type PublicQueue, type RequestSettings, type RequestStatus, type SongRequest } from "../utils/songRequest";
 
 const POLL_MS = 5000;
 
@@ -29,6 +30,8 @@ export function RequestQueuePage() {
   const [copied, setCopied] = useState(false);
   const [qo, setQo] = useState<QueueOverlaySettings>(DEFAULT_QUEUE_OVERLAY);
   const [qoCopied, setQoCopied] = useState(false);
+  const [pub, setPub] = useState<PublicQueue | null>(null);
+  const [okAt, setOkAt] = useState<number | null>(null);
 
   const bookStyle = {
     "--book-accent": design.accentColor,
@@ -48,6 +51,13 @@ export function RequestQueuePage() {
       setSettings(s);
       setDraft((d) => d ?? s);
       setError(null);
+      setOkAt(Date.now());
+      // OBS 대기열 화면이 읽는 것과 같은 공개 대기열을 읽어 반영 상태를 비교한다 (실패해도 관리 기능에는 영향 없음)
+      try {
+        setPub(await getPublicRequestClient().getQueue(ownerId));
+      } catch {
+        setPub(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "신청곡을 불러오지 못했어요.");
     }
@@ -98,6 +108,11 @@ export function RequestQueuePage() {
   const finished = rows.filter((r) => r.status === "done" || r.status === "rejected" || r.status === "canceled");
   const approvedIds = queue.filter((r) => r.status === "approved").map((r) => r.id);
 
+  const nowPlaying = queue.find((r) => r.status === "playing") ?? null;
+  const nextUp = queue.find((r) => r.status === "approved") ?? null;
+  const obsState = compareQueues(rows, pub);
+  const updatedText = okAt ? new Date(okAt).toLocaleTimeString("ko-KR", { hour12: false }) : "-";
+
   const setStatus = (r: SongRequest, to: RequestStatus, text?: string) => {
     if (!canTransition(r.status, to)) return;
     void act(() => repo.setStatus(r.id, to), text);
@@ -142,6 +157,23 @@ export function RequestQueuePage() {
           <RefreshCw className="h-3.5 w-3.5" /> 새로고침
         </button>
       </div>
+
+      <section className="rounded-xl border px-4 py-3 mb-4 text-[13px]" style={box} aria-label="방송 현황" data-testid="broadcast-summary">
+        <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+          <div data-testid="sum-current"><span style={muted}>현재 곡 </span>{nowPlaying ? <strong>▶ {nowPlaying.title} <span className="font-normal" style={muted}>· 🙋 {nowPlaying.requesterName}</span></strong> : <span style={muted}>재생 중인 신청곡 없음</span>}</div>
+          <div data-testid="sum-next"><span style={muted}>다음 곡 </span>{nextUp ? <strong>{nextUp.title} <span className="font-normal" style={muted}>· 🙋 {nextUp.requesterName}</span></strong> : <span style={muted}>없음</span>}</div>
+          <div data-testid="sum-pending"><span style={muted}>확인 대기 </span><strong>{pending.length}건</strong> <span style={muted}>· 대기열 {approvedIds.length}곡 · 접수 </span><strong>{settings ? (settings.accepting ? "켜짐" : "꺼짐") : "-"}</strong></div>
+          <div data-testid="sum-obs">
+            <span style={muted}>OBS 대기열 반영 </span>
+            {obsState === "synced" && <strong style={{ color: "#22c55e" }}>서버 공개 대기열과 일치</strong>}
+            {obsState === "pending" && <strong style={{ color: "#f59e0b" }}>반영 대기 중 (몇 초 내 갱신)</strong>}
+            {obsState === "unknown" && <strong style={{ color: "#f59e0b" }}>확인하지 못했어요</strong>}
+          </div>
+        </div>
+        <div className="text-[11.5px] mt-1.5" style={muted} data-testid="sum-note">
+          마지막 갱신 {updatedText}{error ? " · 연결 실패 — 마지막으로 받은 목록을 보여 주는 중이에요" : ""}. OBS 브라우저 소스가 지금 열려 있는지는 이 화면에서 알 수 없어요 (서버가 OBS에 줄 대기열과 같은지만 확인해요).
+        </div>
+      </section>
 
       {error && (
         <div role="alert" className="rounded-xl border px-4 py-3 text-[13px] mb-4" style={{ ...box, color: "#f87171" }} data-testid="request-error">

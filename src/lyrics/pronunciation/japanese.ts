@@ -14,11 +14,11 @@ export interface JaResult extends KanaResult {
 }
 
 const toHira = (s: string) => s.replace(/[ァ-ヶ]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0x60));
-const isKanaOnly = (s: string) => s.length > 0 && [...s].every((c) => isKana(c) || c === "ー");
+const isKanaOnly = (s: string) => s.length > 0 && [...s].every((c) => isKana(c) || c === "ー" || c === "・");
 const hasKanji = (s: string) => [...s].some(isKanji);
 
 /** 읽기가 문맥에 따라 갈릴 수 있는 흔한 표면형 — 분석기가 한 가지를 골랐더라도 사람이 확인하게 한다 */
-const AMBIGUOUS = new Set(["人", "日", "今日", "明日", "昨日", "生", "行", "方", "何", "上", "下", "中", "間", "後", "大人", "辛い", "角", "他", "側", "事", "時", "所", "物", "気"]);
+const AMBIGUOUS = new Set(["人", "日", "今日", "明日", "昨日", "生", "行", "方", "何", "上", "下", "中", "間", "後", "大人", "辛い", "一日", "角", "他", "側", "事", "時", "所", "物", "気"]);
 
 const NUM = "〇一二三四五六七八九";
 const toAscii = (s: string) => s.replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0));
@@ -88,7 +88,7 @@ const COUNTERS: Record<string, { kana: string; irregular?: Record<number, string
   度: { kana: "ど", irregular: { 1: "いちど" } },
   番: { kana: "ばん" },
   秒: { kana: "びょう" },
-  日: { kana: "にち", review: true, irregular: { 1: "ついたち", 2: "ふつか", 3: "みっか", 4: "よっか", 5: "いつか", 6: "むいか", 7: "なのか", 8: "ようか", 9: "ここのか", 10: "とおか", 14: "じゅうよっか", 20: "はつか", 24: "にじゅうよっか" } },
+  日: { kana: "にち", review: true, irregular: { 2: "ふつか", 3: "みっか", 4: "よっか", 5: "いつか", 6: "むいか", 7: "なのか", 8: "ようか", 9: "ここのか", 10: "とおか", 14: "じゅうよっか", 20: "はつか", 24: "にじゅうよっか" } },
   週: { kana: "しゅう" },
   本: { kana: "ほん", review: true },
   枚: { kana: "まい" },
@@ -106,20 +106,26 @@ const FUNCTION_POS = new Set(["助詞", "助動詞"]);
 /** 앞 단어에 붙여 한 덩어리(띄어쓰기 단위)로 만들 형태소인가 */
 function attachesToPrev(t: JaToken, prev: JaToken | undefined): boolean {
   if (!prev) return false;
+  if (prev.pos === "記号" && (prev.pos_detail_1 === "括弧開" || prev.surface_form === "・")) return true; // 「 뒤, ・ 뒤는 붙여 쓴다
   if (FUNCTION_POS.has(t.pos)) return true;
   if (t.pos === "動詞" && (t.pos_detail_1 === "非自立" || t.pos_detail_1 === "接尾")) return true;
   if (t.pos === "形容詞" && (t.pos_detail_1 === "非自立" || t.pos_detail_1 === "接尾")) return true;
   if (t.pos === "名詞" && t.pos_detail_1 === "接尾") return true;
   if (t.pos === "名詞" && prev.pos === "名詞" && !["非自立", "副詞可能", "代名詞", "接尾"].includes(t.pos_detail_1) && !["代名詞", "非自立", "副詞可能"].includes(prev.pos_detail_1)) return true;
   if (t.pos === "名詞" && t.pos_detail_1 === "数" && prev.pos === "名詞" && prev.pos_detail_1 === "数") return true;
-  if (t.pos === "記号" && /^[、。！？!?…・,.]+$/.test(t.surface_form)) return true;
+  if (t.pos === "記号" && t.pos_detail_1 !== "括弧開") return true;
   return false;
 }
 
 /** 분석기 읽기(가타카나)가 쓸 만한가: 가나·장음만으로 이루어져 있어야 한다 */
 function usableReading(t: JaToken): string | null {
-  const r = t.reading;
+  let r = t.reading;
   if (!r || r === "*") return null;
+  // 단어 안의 は/へ/を 가 소리로는 わ/え/お 인 경우(こんにちは, こんばんは)는 분석기의 발음 필드를 따른다
+  const p = t.pronunciation;
+  if (p && p !== r && p.length === r.length) {
+    r = [...r].map((c, i) => ((c === "ハ" && p[i] === "ワ") || (c === "ヘ" && p[i] === "エ") || (c === "ヲ" && p[i] === "オ") ? p[i] : c)).join("");
+  }
   return isKanaOnly(r) ? r : null;
 }
 
@@ -164,7 +170,10 @@ export function analyzeJapanese(line: string, tk: JaTokenizer): JaResult {
       if (n !== null && n < 100000) {
         const cr = ctr ? counterReading(n, ctr.surface_form) : null;
         if (cr) {
-          if (cr.review) bump("review", `${numStr}${ctr.surface_form} 읽기는 확인이 필요해요`);
+          if (cr.review) {
+            bump("review", `${numStr}${ctr.surface_form} 읽기는 확인이 필요해요`);
+            if (!uncertain.includes(numStr + ctr.surface_form)) uncertain.push(numStr + ctr.surface_form);
+          }
           push(t, cr.kana, prev);
           prev = ctr;
           i = j + 1;
