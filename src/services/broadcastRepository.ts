@@ -75,13 +75,13 @@ function newId(): string {
 // 테이블이 없다고 한 번 확인되면 이 세션 동안은 서버를 다시 찌르지 않고 로컬로 처리한다
 let serverUnavailable = false;
 
-function useServer(): ReturnType<typeof getBroadcastDb> {
+function getAvailableServerDb(): ReturnType<typeof getBroadcastDb> {
   return serverUnavailable ? null : getBroadcastDb();
 }
 
 export const broadcastRepository = {
   async list(userId: string): Promise<{ profiles: BroadcastProfile[]; source: ProfileSource }> {
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (db) {
       const { data, error } = await db
         .from("broadcast_profiles")
@@ -98,7 +98,7 @@ export const broadcastRepository = {
   async create(userId: string, name: string, settings: OverlaySettings): Promise<BroadcastProfile> {
     const clean = cleanProfileName(name);
     const safe = sanitizeOverlaySettings(settings);
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (db) {
       const { data, error } = await db
         .from("broadcast_profiles")
@@ -119,7 +119,7 @@ export const broadcastRepository = {
     const row: Record<string, unknown> = {};
     if (patch.name !== undefined) row.name = cleanProfileName(patch.name);
     if (patch.settings !== undefined) row.settings = sanitizeOverlaySettings(patch.settings);
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (db) {
       const { data, error } = await db.from("broadcast_profiles").update(row).eq("id", id).eq("user_id", userId).select().single();
       if (!error) return rowToProfile(data as ProfileRow);
@@ -141,7 +141,7 @@ export const broadcastRepository = {
   },
 
   async remove(userId: string, id: string): Promise<void> {
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (db) {
       const { error } = await db.from("broadcast_profiles").delete().eq("id", id).eq("user_id", userId);
       if (!error) return;
@@ -153,7 +153,7 @@ export const broadcastRepository = {
 
   /** 계정에 저장된 방송 키. 없거나 서버를 쓸 수 없으면 null. */
   async getLiveKey(userId: string): Promise<string | null> {
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (!db) return null;
     const { data, error } = await db.from("broadcast_keys").select("live_key").eq("user_id", userId).maybeSingle();
     if (error) {
@@ -169,7 +169,7 @@ export const broadcastRepository = {
 
   async saveLiveKey(userId: string, key: string): Promise<void> {
     if (!isValidLiveKey(key)) return;
-    const db = useServer();
+    const db = getAvailableServerDb();
     if (!db) return;
     const { error } = await db.from("broadcast_keys").upsert({ user_id: userId, live_key: key }, { onConflict: "user_id" });
     if (error) {
