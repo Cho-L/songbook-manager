@@ -1,6 +1,6 @@
 import { normalizeArtist, splitArtists } from "../artist";
-import { hasHangul, hasLatin } from "../phonetic";
-import { normalizeTitle } from "../text";
+import { normalizeTitle, normalizeText } from "../text";
+import { lyricsVersionsMatch } from "../versions";
 import { classifyHttpStatus, isAbort, toLyricsError } from "../errors";
 import { hasVersionWord } from "../text";
 import type { AliasProvider, ArtistCatalog, ArtistHit, ArtistRecording, RecordingPage, TitleArtistAliases } from "../types";
@@ -8,12 +8,12 @@ import type { AliasProvider, ArtistCatalog, ArtistHit, ArtistRecording, Recordin
 /**
  * MusicBrainz (https://musicbrainz.org) — 공개 음악 메타데이터 DB (API 키 없음, 브라우저 CORS 허용).
  * 한글로 적은 곡/가수가 가사 DB(LRCLIB)에는 영문 표기로만 올라 있을 때("꽃길 - 김세정" ↔ "Flower Way - Kim Sejeong"),
- * 번역하거나 소리로 지어내지 않고 MusicBrainz 가 가진 "공식 별칭/앨범명"만 가져와서 검색에 쓴다.
+ * 번역하거나 소리로 지어내지 않고 MusicBrainz 에 등록된 곡/가수 별칭만 검색에 쓴다.
  *
  * 확실한 경우에만 값을 돌려준다:
  *  - 가수: 이름(또는 별칭)이 입력과 정확히 같은 아티스트만 채택한다 (비슷한 이름은 쓰지 않는다)
- *  - 제목: 그 아티스트의 녹음 중 제목이 입력과 정확히 같은 것의 별칭/수록 릴리스 제목 가운데 영문(라틴 문자)인 것만 채택한다
- * 요청은 곡당 최대 2번이고 결과는 메모리에 캐시한다 (MusicBrainz 는 초당 1회 이내 사용을 요청한다).
+ *  - 제목: 그 아티스트의 녹음 제목/등록 별칭이 입력과 정확히 같은 것만 채택한다. 앨범명을 곡 별칭으로 추측하지 않는다.
+ * 조회는 가수/녹음 검색과 필요 시 browse 한 페이지(최대 3회)이며 결과는 메모리에 캐시한다 (MusicBrainz 는 초당 1회 이내 사용을 요청한다).
  */
 interface MbAlias {
   name?: string;
@@ -41,9 +41,9 @@ interface MbRecording {
 
 const EMPTY: TitleArtistAliases = { artists: [], titles: [] };
 
-/** 가사 DB 검색에 쓸 수 있는 "원어/영문 표기"인가: 한글이 없고, 라틴 문자나 일본어(가나/한자)가 있어야 한다 */
+/** Registered aliases may be Korean, Japanese or Latin; never synthesize a translation. */
 function isUsableAlias(s: string): boolean {
-  return !hasHangul(s) && (hasLatin(s) || /[\u3040-\u30FF\u4E00-\u9FFF]/.test(s));
+  return /[\p{L}\p{N}]/u.test(s) && !/[\p{Cc}\p{Cs}]/u.test(s);
 }
 function pushUnique(list: string[], seen: Set<string>, value: string | undefined, keyFn: (v: string) => string) {
   const v = (value ?? "").trim();
@@ -166,7 +166,7 @@ export class MusicBrainzAliasProvider implements AliasProvider, ArtistCatalog {
         alt.push(t);
       };
       for (const al of r.aliases ?? []) add(al.name);
-      for (const rel of r.releases ?? []) add(rel.title);
+      // Do not treat arbitrary album/release names as recording aliases.
       items.push({
         mbid: r.id,
         title,
@@ -181,13 +181,16 @@ export class MusicBrainzAliasProvider implements AliasProvider, ArtistCatalog {
   }
 
   lookup(title: string, artist: string, signal?: AbortSignal): Promise<TitleArtistAliases> {
-    const key = `${normalizeTitle(title)}|${normalizeArtist(artist)}`;
+    const key = `${normalizeText(title)}|${normalizeArtist(artist)}`;
     let p = this.cache.get(key);
     if (!p) {
       p = this.doLookup(title, artist, signal).catch((e) => {
         this.cache.delete(key); // 일시적 실패는 캐시하지 않는다
         if (e instanceof DOMException && e.name === "AbortError") throw e;
-        return EMPTY;
+        return { ...EMPTY, lookupUnavailable: true };
+      }).then((result) => {
+        if (result.lookupUnavailable) this.cache.delete(key);
+        return result;
       });
       this.cache.set(key, p);
     }
@@ -213,7 +216,7 @@ export class MusicBrainzAliasProvider implements AliasProvider, ArtistCatalog {
 
     const artistRes = await this.getJson<{ artists?: MbArtist[] }>(
       "/ws/2/artist",
-      { query: `artist:${q(first)}`, limit: "5" },
+      { query: `(artist:${q(first)} OR alias:${q(first)})`, limit: "5" },
       signal
     );
     const exact = (artistRes.artists ?? []).filter((a) => {
@@ -233,6 +236,7 @@ export class MusicBrainzAliasProvider implements AliasProvider, ArtistCatalog {
     pushUnique(artistNames, seenArtists, best["sort-name"]?.split(",").reverse().join(" "), normalizeArtist);
 
     const titles: string[] = [];
+    let lookupUnavailable = false;
     if (best.id) {
       try {
         const recRes = await this.getJson<{ recordings?: MbRecording[] }>(
@@ -243,28 +247,32 @@ export class MusicBrainzAliasProvider implements AliasProvider, ArtistCatalog {
         const wantedTitle = normalizeTitle(title);
         const seenTitles = new Set<string>();
         for (const r of recRes.recordings ?? []) {
-          if (!r.title || normalizeTitle(r.title) !== wantedTitle) continue;
+          if (!r.title || (r["artist-credit"]?.length && !r["artist-credit"].some((c) => c.artist?.id === best.id))) continue;
+          const names = [r.title, ...(r.aliases ?? []).map((a) => a.name ?? "")];
+          if (!names.some((t) => normalizeTitle(t) === wantedTitle) || !lyricsVersionsMatch(title, r.title)) continue;
           pushUnique(titles, seenTitles, r.title, normalizeTitle);
           for (const al of r.aliases ?? []) pushUnique(titles, seenTitles, al.name, normalizeTitle);
-          for (const rel of r.releases ?? []) pushUnique(titles, seenTitles, rel.title, normalizeTitle);
+          // A release/album title is not necessarily an alias of this song.
+          // Only recording titles and registered recording aliases establish title identity.
         }
         // 검색으로 못 찾았고 입력 제목이 원어/로마자라면: 이 아티스트의 등록된 곡 목록(첫 페이지)에서 제목·별칭이 "정확히" 같은 곡을 찾는다
-        // (예: 로마자 제목 Odoriko → 등록된 원어 제목 踊り子). 한글 제목은 번역으로 연결하지 않는다.
+        // (예: 로마자 제목 Odoriko → 원어 제목 踊り子). 한글도 등록된 별칭의 정확 일치만 사용한다.
         if (titles.length === 0 && isUsableAlias(title)) {
           const wantedTitle = normalizeTitle(title);
           const seenTitles = new Set<string>();
           const page = await this.browseRecordings(best.id, 0, signal);
           for (const r of page.items) {
             const all = [r.title, ...r.altTitles];
-            if (!all.some((t) => normalizeTitle(t) === wantedTitle)) continue;
+            if (!all.some((t) => normalizeTitle(t) === wantedTitle) || !lyricsVersionsMatch(title, r.title)) continue;
             for (const t of all) pushUnique(titles, seenTitles, t, normalizeTitle);
           }
         }
       } catch (e) {
         if (isAbort(e)) throw e;
+        lookupUnavailable = true;
         // 가수 별칭만으로도 검색은 계속할 수 있다
       }
     }
-    return { artists: artistNames, titles };
+    return { artists: artistNames, titles, ...(lookupUnavailable ? { lookupUnavailable: true } : {}) };
   }
 }

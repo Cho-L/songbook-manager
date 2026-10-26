@@ -1,3 +1,4 @@
+import { MAX_TOTAL_REQUESTS } from "../src/lyrics/searchPlan";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveLyrics } from "../src/lyrics/pipeline";
@@ -96,11 +97,11 @@ test("제목만 입력 / 가수만 입력", async () => {
   assert.ok(["not-found", "needs-choice", "no-sync"].includes(a.outcome));
 });
 
-test("확장 단계 요청 수는 6번 이하", async () => {
+test("검색 확장 단계는 전체 요청 상한 안에서 완료", async () => {
   const p = new FakeLrclib(DB);
   await resolveLyrics(song("꽃길없음", "김세정"), p, { aliasProvider: alias(["Kim Sejeong", "K"], ["A", "B", "C"]) });
   const extended = p.calls.filter((c) => c.startsWith("q:") || /\|Kim Sejeong$/.test(c)).length;
-  assert.ok(p.calls.length <= 7 + 6, `calls=${p.calls.length}`);
+  assert.ok(p.calls.length <= MAX_TOTAL_REQUESTS, `calls=${p.calls.length}`);
   assert.ok(extended <= 8);
 });
 
@@ -117,14 +118,14 @@ function fakeMb(handlers: Record<string, unknown>) {
   return { f, urls };
 }
 
-test("MusicBrainz: 이름이 정확히 같은 아티스트의 영문 별칭과 같은 곡의 영문 릴리스 제목만 쓴다", async () => {
+test("MusicBrainz: 정확한 아티스트의 등록 곡 별칭을 쓰고 앨범명은 추측하지 않는다", async () => {
   const { f, urls } = fakeMb({
     "/ws/2/artist": { artists: [{ id: "A1", name: "김세정", "sort-name": "Kim, Sejeong", score: 100, aliases: [{ name: "Kim Sejeong" }, { name: "세정" }] }, { id: "A2", name: "김세정2", score: 60 }] },
-    "/ws/2/recording": { recordings: [{ title: "꽃길", releases: [{ title: "Flower Way" }, { title: "꽃길" }] }, { title: "다른곡", releases: [{ title: "Other" }] }] },
+    "/ws/2/recording": { recordings: [{ title: "꽃길", aliases: [{ name: "Flower Way" }], releases: [{ title: "Unrelated Album" }] }, { title: "다른곡", releases: [{ title: "Other" }] }] },
   });
   const r = await new MusicBrainzAliasProvider("https://mb.test", f).lookup("꽃길", "김세정");
   assert.ok(r.artists.includes("Kim Sejeong"));
-  assert.deepEqual(r.titles, ["Flower Way"]);
+  assert.deepEqual(r.titles, ["꽃길", "Flower Way"]);
   assert.equal(urls.length, 2);
 });
 
@@ -139,7 +140,7 @@ test("MusicBrainz: HTTP 오류는 빈 값(검색은 계속) + 실패는 캐시�
   let n = 0;
   const f = (async () => { n++; return new Response("x", { status: 503 }); }) as unknown as typeof fetch;
   const p = new MusicBrainzAliasProvider("https://mb.test", f);
-  assert.deepEqual(await p.lookup("꽃길", "김세정"), { artists: [], titles: [] });
+  assert.deepEqual(await p.lookup("꽃길", "김세정"), { artists: [], titles: [], lookupUnavailable: true });
   await p.lookup("꽃길", "김세정");
   assert.equal(n, 2);
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import type { useAutoLyrics } from "../../hooks/useAutoLyrics";
 import { describeStatus } from "../../hooks/useAutoLyrics";
 import { setAutoLyricsEnabled } from "../../lyrics/cache";
@@ -82,6 +83,12 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
           <button type="button" className={btn} style={btnStyle} aria-expanded={tuning} onClick={() => setTuning((v) => !v)}>
             싱크 보정{Math.abs(offset) > 0.001 ? ` (${formatOffset(offset)})` : ""}
           </button>
+        )}
+        {["not-found", "no-sync", "lyrics-only", "mismatch"].includes(status.kind) && auto.canSave && auto.rawSong && (
+          <Link className={btn + " inline-flex items-center"} style={btnStyle}
+            to={`/books/${encodeURIComponent(auto.rawSong.ownerId)}/songs/${encodeURIComponent(auto.rawSong.id)}/edit`}>
+            가사·LRC 직접 입력
+          </Link>
         )}
         {showRetry && (
           <button type="button" className={btn} style={btnStyle} onClick={() => void auto.refresh()}>

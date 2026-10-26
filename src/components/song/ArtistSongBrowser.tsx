@@ -97,7 +97,7 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
     setPickedTitle(g.main.title);
     setResultIds(null);
     const artistAliases = [selected.name, ...selected.aliases.filter((x) => x !== selected.name)];
-    const ids = await auto.searchForRecording({ title: g.main.title, altTitles: g.altTitles, artist: selected.name, artistAliases });
+    const ids = await auto.searchForRecording({ title: g.main.title, referenceDuration: g.main.length, altTitles: g.altTitles, artist: selected.name, artistAliases });
     setResultIds(ids);
   }
 

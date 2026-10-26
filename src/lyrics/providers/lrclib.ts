@@ -1,6 +1,6 @@
 import { LyricsApiError, classifyHttpStatus, isAbort } from "../errors";
 import { parseLrc } from "../lrc";
-import type { LyricsCandidate, LyricsProvider } from "../types";
+import type { LyricsCandidate, LyricsProvider, LyricsLookupMetadata } from "../types";
 
 /** 같은 검색을 짧은 시간 안에 반복하지 않는다 (진행 중인 요청 공유 + 성공 결과 5분 보관) */
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -49,11 +49,26 @@ export class LrclibProvider implements LyricsProvider {
     return this.fetchCandidates(url, signal);
   }
 
+  /** Exact metadata lookup bypasses the search index. Album/duration are optional in the public provider implementation. */
+  async get(title: string, artist: string, metadata: LyricsLookupMetadata = {}, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+    if (!title.trim() || !artist.trim() || (metadata.duration !== undefined &&
+      (!Number.isFinite(metadata.duration) || metadata.duration < 1 || metadata.duration > 3600))) {
+      throw new LyricsApiError("client", "LRCLIB 조회 metadata 오류");
+    }
+    const url = new URL("/api/get", this.baseUrl);
+    url.searchParams.set("track_name", title);
+    url.searchParams.set("artist_name", artist);
+    if (metadata.album?.trim()) url.searchParams.set("album_name", metadata.album.trim());
+    if (metadata.duration !== undefined) url.searchParams.set("duration", String(metadata.duration));
+    return this.fetchCandidates(url, signal);
+  }
+
   private fetchCandidates(url: URL, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+    if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
     const key = url.toString();
     const now = Date.now();
     const hit = this.memo.get(key);
-    if (hit && now - hit.at < CACHE_TTL_MS) return hit.p;
+    if (hit && now - hit.at < CACHE_TTL_MS) return signal ? raceAbort(hit.p, signal) : hit.p;
     // 요청이 취소(AbortSignal)되어도 다른 호출자가 같은 요청을 기다릴 수 있으므로 공유 요청에는 signal 을 넘기지 않고, 호출자 쪽에서만 취소를 반영한다.
     const p = this.doFetch(url).catch((e) => {
       this.memo.delete(key); // 실패는 보관하지 않는다
@@ -73,6 +88,7 @@ export class LrclibProvider implements LyricsProvider {
       if (isAbort(e)) throw e;
       throw new LyricsApiError("network", "LRCLIB 연결 실패");
     }
+    if (url.pathname === "/api/get" && res.status === 404) return [];
     if (!res.ok) throw classifyHttpStatus("LRCLIB", res.status);
     let data: unknown;
     try {
@@ -80,9 +96,18 @@ export class LrclibProvider implements LyricsProvider {
     } catch {
       throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
     }
-    if (!Array.isArray(data)) return [];
+    if (url.pathname === "/api/get" && (!data || typeof data !== "object" || Array.isArray(data))) {
+      throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
+    }
+    const records = url.pathname === "/api/get" && data && typeof data === "object" && !Array.isArray(data) ? [data] : data;
+    if (!Array.isArray(records)) throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
     const out: LyricsCandidate[] = [];
-    for (const r of data as LrclibRecord[]) {
+    for (const value of records) {
+      if (!value || typeof value !== "object") throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
+      const r = value as LrclibRecord;
+      if (typeof (r.trackName ?? r.name) !== "string" || (r.artistName != null && typeof r.artistName !== "string")) {
+        throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
+      }
       const title = (r.trackName ?? r.name ?? "").trim();
       if (!title) continue;
       // 시간 태그가 실제로 읽히는 싱크 가사만 "싱크 있음"으로 인정한다 (빈 문자열/깨진 LRC 를 싱크 가사로 보여 주지 않는다)
@@ -94,7 +119,7 @@ export class LrclibProvider implements LyricsProvider {
         title,
         artist: (r.artistName ?? "").trim(),
         album: r.albumName ?? undefined,
-        duration: typeof r.duration === "number" && r.duration > 0 ? r.duration : undefined,
+        duration: typeof r.duration === "number" && Number.isFinite(r.duration) && r.duration > 0 ? r.duration : undefined,
         instrumental: Boolean(r.instrumental),
         plainLyrics: plain,
         syncedLyrics: synced,

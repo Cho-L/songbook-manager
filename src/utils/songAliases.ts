@@ -53,7 +53,15 @@ export function getSongAliases(song: Pick<Song, "title" | "artist" | "titleAlias
     const artistOk = !hit.artistKey || [...artistKeys].some((k) => ARTIST_INDEX.get(k)?.some((n) => normalizeForSearch(n) === hit.artistKey));
     if (artistOk) seedTitles.push(...hit.titles);
   }
-  const titles = uniq([...(song.titleAliases ?? []), ...seedTitles]).filter((t) => normalizeForSearch(t) !== normalizeForSearch(song.title));
+  // Preserve symbol spellings for provider lookup even when browse-search normalization considers them equal.
+  const spelling = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").trim();
+  const seenTitles = new Set<string>([spelling(song.title)]);
+  const titles = [...(song.titleAliases ?? []), ...seedTitles].filter((t) => {
+    const key = spelling(t);
+    if (!key || seenTitles.has(key)) return false;
+    seenTitles.add(key);
+    return true;
+  });
   return { titles, artists: artistAliases };
 }
 

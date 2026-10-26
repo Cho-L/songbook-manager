@@ -4,7 +4,7 @@ import { formatLrc } from "./lrc";
 import { hashText, normalizeText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
 import { applyWarp } from "./warp";
-import { IDENTITY_WARP, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
+import { LYRICS_SEARCH_REVISION, IDENTITY_WARP, type DiscoverySummary, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
 
 /**
  * 자동 가사 검색 + 싱크 파이프라인 (화면/저장소와 무관한 순수 로직).
@@ -24,6 +24,7 @@ export interface ResolveInput {
   /** 곡에 입력했거나 기본 사전에 있는 다른 언어 표기 (검색과 점수 계산에 쓴다) */
   titleAliases?: string[];
   artistAliases?: string[];
+  referenceDuration?: number;
 }
 
 export interface ResolveOptions {
@@ -60,7 +61,7 @@ export async function resolveLyricsDetailed(
 ): Promise<{ entry: SyncEntry; pool: ScoredCandidate[] }> {
   const now = opts.now ?? Date.now;
   const synchronizer = opts.synchronizer ?? new ProviderLyricsSynchronizer();
-  const base = { v: 1 as const, songId: input.songId, ...entryKeys(input), createdAt: now(), lines: [], warps: {}, warnings: [] as string[] };
+  const base = { v: 1 as const, searchRevision: LYRICS_SEARCH_REVISION, discovery: undefined as DiscoverySummary | undefined, songId: input.songId, ...entryKeys(input), createdAt: now(), lines: [], warps: {}, warnings: [] as string[] };
 
   // 후보 선택: 이미 받아 둔 후보가 있으면 그대로 쓰고 다시 검색하지 않는다 (검색 횟수 절약 + 같은 후보가 다시 안 나오는 문제 방지)
   let ranked: ScoredCandidate[];
@@ -68,8 +69,11 @@ export async function resolveLyricsDetailed(
     ranked = opts.pool;
   } else {
     // 단계적 검색(엄격 → 느슨, 별칭, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
-    const { candidates, aliases, budgetExhausted } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
+    const { candidates, aliases, budgetExhausted, diagnostics } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
     ranked = rankCandidates(input, candidates, aliases);
+    base.discovery = diagnostics;
+    if (diagnostics.failures) base.warnings.push("일부 조회에 실패했어요 — 제공자에 가사가 없다고 단정할 수 없어요");
+    if (!diagnostics.withLyrics && diagnostics.records) base.warnings.push("제공자가 반환한 곡 정보에서 사용할 수 있는 가사 본문을 받지 못했어요");
     if (budgetExhausted) base.warnings.push("검색 횟수 상한에 도달해 일부 검색은 건너뛰었어요");
   }
   const entry = await decide(input, ranked, opts, base, synchronizer);
@@ -99,7 +103,7 @@ async function decide(
       // 가수는 확실히 같은데 제목만 한글↔영문이라 비교가 안 되는 후보(꽃길 ↔ Flower Way)는 자동으로 고르지 않고 목록으로만 보여 준다
       const crossScript = hasArtist ? ranked.filter((c) => !medium.includes(c) && isCrossScriptTitleChoice(input, c)) : [];
       if (medium.length === 0 && crossScript.length === 0) {
-        return { ...base, outcome: "not-found", confidence: top.confidence, warnings: ["비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
+        return { ...base, outcome: "not-found", confidence: top.confidence, warnings: [...base.warnings, "비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
       }
       const options = dedupeCandidates([...medium, ...crossScript]).slice(0, 8);
       return {
@@ -114,7 +118,7 @@ async function decide(
   }
 
   const candidate = { id: chosen.id, title: chosen.title, artist: chosen.artist, duration: chosen.duration };
-  const warnings: string[] = [];
+  const warnings: string[] = [...base.warnings];
   if (chosen.versionMismatch) warnings.push("찾은 곡이 라이브/리믹스 등 다른 버전일 수 있어요");
 
   if (!chosen.syncedLyrics) {

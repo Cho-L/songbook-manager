@@ -55,11 +55,27 @@ export interface ScoredCandidate extends LyricsCandidate {
   evidence?: MatchEvidence;
 }
 
+export interface LyricsLookupMetadata {
+  /** Reference recording duration only. Never substitute a YouTube MR duration. */
+  duration?: number;
+  album?: string;
+}
+
+export const LYRICS_SEARCH_REVISION = 1;
+export interface DiscoverySummary {
+  requests: number;
+  records: number;
+  withLyrics: number;
+  failures: number;
+  budgetExhausted: boolean;
+}
+
 export interface LyricsProvider {
   readonly name: string;
   search(title: string, artist: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
   /** 자유 검색어(제목·가수·앨범 어디든 포함) 검색. 지원하는 provider 만 구현한다 */
   searchQuery?(query: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+  get?(title: string, artist: string, metadata?: LyricsLookupMetadata, signal?: AbortSignal): Promise<LyricsCandidate[]>;
 }
 
 /**
@@ -67,6 +83,8 @@ export interface LyricsProvider {
  * 번역기로 만들어 낸 값이 아니라 외부 메타데이터(MusicBrainz 등)가 알려 준 표기만 담는다.
  */
 export interface TitleArtistAliases {
+  /** A transient metadata failure is not evidence that no alias exists. */
+  lookupUnavailable?: boolean;
   artists: string[];
   titles: string[];
   /** 사용자가 직접 입력했거나 기본 사전에 있는 표기. 가수 정보가 없는 곡에서도 제목 별칭으로 인정한다 */
@@ -198,6 +216,8 @@ export interface SyncEntry {
   lyricsHash: string;
   createdAt: number;
   outcome: SyncOutcome;
+  searchRevision?: number;
+  discovery?: DiscoverySummary;
   source?: string;
   candidate?: { id: string; title: string; artist: string; duration?: number };
   confidence?: number;

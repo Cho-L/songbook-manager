@@ -85,7 +85,9 @@ export function describeStatus(args: {
   if (entry.outcome === "no-sync") return { kind: "no-sync", text: "싱크 정보를 찾지 못해 저장된 가사를 그대로 보여줘요", notes };
   if (entry.outcome === "needs-choice") return { kind: "needs-choice", text: "후보가 여러 개예요 — 맞는 곡을 골라 주세요", notes };
   if (entry.outcome === "mismatch") return { kind: "mismatch", text: "찾은 가사가 저장된 가사와 많이 달라서 적용하지 않았어요", notes };
-  return { kind: "not-found", text: "가사를 찾지 못했어요", notes: [...notes, "곡 제목과 가수가 정확한지 확인한 뒤 \"다시 찾기\"를 눌러보세요."] };
+  return { kind: "not-found", text: "현재 연결된 가사 제공자에서 찾지 못했어요", notes: [...notes,
+    entry.discovery?.withLyrics ? "가사 후보는 받았지만 같은 곡인지 확인하지 못했어요. 원어·가수·다른 표기를 확인해 주세요." : "검색한 표기로 가사를 받지 못했어요. 다른 표기나 제공자 등록 상태를 확인해 주세요.",
+    "사용 권한이 있는 가사나 LRC를 곡 수정 화면에서 직접 입력할 수 있어요. 저장된 LRC는 기존 싱크 보정으로 맞출 수 있어요."] };
 }
 
 /**
@@ -234,13 +236,13 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
    * 돌려주는 값은 이번 검색에서 나온 후보 id 들 (화면에서 이 후보만 보여 주려고).
    */
   const searchForRecording = useCallback(
-    async (rec: { title: string; altTitles: string[]; artist: string; artistAliases: string[] }): Promise<string[]> => {
+    async (rec: { title: string; altTitles: string[]; artist: string; artistAliases: string[]; referenceDuration?: number }): Promise<string[]> => {
       if (!songId) return [];
       setListing(true);
       setError(null);
       try {
         const ranked = await searchRanked(
-          { songId, title: rec.title, artist: rec.artist, ownLyrics, titleAliases: rec.altTitles, artistAliases: rec.artistAliases },
+          { songId, title: rec.title, artist: rec.artist, ownLyrics, titleAliases: rec.altTitles, artistAliases: rec.artistAliases, referenceDuration: rec.referenceDuration },
           provider
         );
         poolRef.current = ranked;
