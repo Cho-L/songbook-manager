@@ -139,15 +139,15 @@ jobs:
         run: |
           set -euo pipefail
           git apply --check feature.patch
-          git apply feature.patch
+          git apply --index feature.patch
           while IFS= read -r path; do
             case "$path" in
               src/*|tests/*|docs/*|public/*) ;;
               *) echo "::error::Unexpected changed file: $path"; exit 1;;
             esac
             if [ -L "$path" ]; then echo "::error::Symlink prohibited: $path"; exit 1; fi
-          done < <(git diff --name-only)
-          if [ -z "$(git diff --name-only)" ]; then exit 1; fi
+          done < <(git diff --cached --name-only)
+          if [ -z "$(git diff --cached --name-only)" ]; then exit 1; fi
           if [ "$(wc -c < feature.patch)" -gt 250000 ]; then
             echo "::error::Patch exceeds size limit"; exit 1
           fi
@@ -198,18 +198,17 @@ jobs:
           author=$(gh api "repos/$REPOSITORY/issues/$ISSUE" --jq '.user.login')
           if [ "$author" != "$OWNER" ]; then exit 1; fi
           git apply --check feature.patch
-          git apply feature.patch
+          git apply --index feature.patch
           while IFS= read -r path; do
             case "$path" in
               src/*|tests/*|docs/*|public/*) ;;
               *) echo "::error::Prohibited path: $path"; exit 1;;
             esac
             if [ -L "$path" ]; then exit 1; fi
-          done < <(git diff --name-only)
-          if [ -z "$(git diff --name-only)" ]; then exit 1; fi
+          done < <(git diff --cached --name-only)
+          if [ -z "$(git diff --cached --name-only)" ]; then exit 1; fi
           branch="codex/issue-${ISSUE}-${RUN_ID}"
           git switch -c "$branch"
-          git add -- src tests docs public
           git -c core.hooksPath=/dev/null -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "feat: draft Codex proposal for issue #$ISSUE"
           git -c credential.helper='!gh auth git-credential' push "https://github.com/$REPOSITORY.git" "HEAD:refs/heads/$branch"
           printf '%s\n'             '## AI-generated feature proposal (review required)'             ""             "Closes no issue automatically. Requested in #$ISSUE."             ""             'Automated validation completed in a separate, read-only job (typecheck, build, offline tests).'             ""             '**Do not merge without human review.** Merging into main deploys to Cloudflare production.'             'No auth, SQL migration, payment, deployment, or config files were permitted in this patch.'             'Live Cloudflare/Supabase/OBS behavior was NOT tested.'             > /tmp/pr-body.md
