@@ -1,6 +1,6 @@
 /** 한국어/영어 모두에 쓸 수 있는 가벼운 텍스트 비교 유틸 (외부 라이브러리 없음) */
 
-const VERSION_WORDS = /\b(live|remix|acoustic|instrumental|inst\.?|cover|mr|ver\.?|version|karaoke)\b|라이브|리믹스|어쿠스틱|커버|반주|노래방/i;
+import { hasLyricsVersion } from "./versions";
 
 import { crossScriptSimilarity, hasHangul, hasLatin } from "./phonetic";
 
@@ -33,7 +33,7 @@ export function normalizeTitle(s: string): string {
 }
 
 export function hasVersionWord(s: string): boolean {
-  return VERSION_WORDS.test(s);
+  return hasLyricsVersion(s);
 }
 
 function bigrams(s: string): Map<string, number> {

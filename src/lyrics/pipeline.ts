@@ -1,7 +1,7 @@
 import { MEDIUM_CONFIDENCE, dedupeCandidates, isAutoAccept, isCrossScriptTitleChoice, rankCandidates, summarize } from "./matching";
 import { searchCandidates } from "./searchPlan";
 import { formatLrc } from "./lrc";
-import { hashText, normalizeTitle } from "./text";
+import { hashText, normalizeText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
 import { applyWarp } from "./warp";
 import { IDENTITY_WARP, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
@@ -39,7 +39,7 @@ export interface ResolveOptions {
 }
 
 export function entryKeys(input: { title: string; artist: string; ownLyrics: string }) {
-  return { titleKey: normalizeTitle(input.title), artistKey: normalizeTitle(input.artist), lyricsHash: hashText(input.ownLyrics.trim()) };
+  return { titleKey: `lyrics-match-v2:${normalizeText(input.title)}`, artistKey: normalizeTitle(input.artist), lyricsHash: hashText(input.ownLyrics.trim()) };
 }
 
 /** 이 캐시 항목이 지금의 곡 정보에 대해 여전히 유효한가 (제목/가수/저장된 가사가 그대로인가) */
@@ -91,24 +91,26 @@ async function decide(
   if (!chosen) {
     // high: 자동 선택 / medium: 후보 선택 UI / low: 실패 — 제목만 같은 다른 곡을 조용히 고르지 않는다
     const top = ranked[0];
-    if (!isAutoAccept(top, hasArtist)) {
+    // Distinct near-equal provider records can be different recordings even without version labels.
+    const contenders = dedupeCandidates(ranked.filter((c) => isAutoAccept(c, hasArtist) &&
+      Math.abs(top.titleSimilarity - c.titleSimilarity) <= 0.05 && Math.abs(top.artistSimilarity - c.artistSimilarity) <= 0.05));
+    if (!isAutoAccept(top, hasArtist) || contenders.length > 1) {
       const medium = ranked.filter((c) => c.confidence >= MEDIUM_CONFIDENCE);
       // 가수는 확실히 같은데 제목만 한글↔영문이라 비교가 안 되는 후보(꽃길 ↔ Flower Way)는 자동으로 고르지 않고 목록으로만 보여 준다
       const crossScript = hasArtist ? ranked.filter((c) => !medium.includes(c) && isCrossScriptTitleChoice(input, c)) : [];
       if (medium.length === 0 && crossScript.length === 0) {
         return { ...base, outcome: "not-found", confidence: top.confidence, warnings: ["비슷한 곡이 있었지만 일치도가 낮아 사용하지 않았어요"] };
       }
-      const options = dedupeCandidates([...medium.slice(0, 5), ...crossScript]).slice(0, 8);
+      const options = dedupeCandidates([...medium, ...crossScript]).slice(0, 8);
       return {
         ...base,
         outcome: "needs-choice",
         options: options.map(summarize),
         confidence: options[0].confidence,
-        warnings: [...base.warnings, ...(crossScript.length > 0 ? ["제목 표기가 달라서(한글↔원어/영문) 자동으로 고르지 못했어요. 가수는 같은 곡들이에요 — 미리보기로 가사를 확인하고 맞는 곡을 골라 주세요"] : [])],
+        warnings: [...base.warnings, ...(contenders.length > 1 ? ["비슷한 녹음 후보가 여러 개예요 — 길이와 가사를 확인하고 골라 주세요"] : []), ...(crossScript.length > 0 ? ["제목 표기가 달라서(한글↔원어/영문) 자동으로 고르지 못했어요. 가수는 같은 곡들이에요 — 미리보기로 가사를 확인하고 맞는 곡을 골라 주세요"] : [])],
       };
     }
-    // 점수가 거의 같으면(5% 이내) 싱크 가사가 있는 후보를 우선 (자동 선택 조건을 만족하는 것 중에서)
-    chosen = ranked.find((c) => c.syncedLyrics && isAutoAccept(c, hasArtist) && top.confidence - c.confidence <= 0.05) ?? top;
+    chosen = top; // The single unambiguous candidate already passed the version/title/artist gates.
   }
 
   const candidate = { id: chosen.id, title: chosen.title, artist: chosen.artist, duration: chosen.duration };
