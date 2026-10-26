@@ -193,7 +193,8 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songId, title, artist, ownLyrics, ownSynced, enabled]);
 
-  const applied = Boolean(entry && appliesToLyrics(entry, ownLyrics));
+  // Reject stale results during the render before the cache-reset effect runs, too.
+  const applied = Boolean(entry && isEntryValid(entry, { title, artist, ownLyrics }) && appliesToLyrics(entry, ownLyrics));
   const song = useMemo(() => {
     if (!rawSong || !entry || !applied) return rawSong;
     return { ...rawSong, lyrics: buildResolvedLyrics(entry, videoId, ownLyrics) };

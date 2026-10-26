@@ -1,8 +1,9 @@
 import type { CandidateSummary, MatchEvidence, LyricsCandidate, ScoredCandidate, SyncedLyricLine, TitleArtistAliases } from "./types";
 import { matchArtists } from "./artist";
-import { hasVersionWord, normalizeText, similarity, titleSimilarityScore } from "./text";
+import { normalizeText, similarity, titleSimilarityScore } from "./text";
 import { hasHangul, hasLatin } from "./phonetic";
 import { loanwordScore } from "./loanword";
+import { lyricsVersionsMatch } from "./versions";
 
 // ---------------------------------------------------------------- 후보 점수
 
@@ -37,8 +38,8 @@ export function scoreCandidate(song: { title: string; artist: string }, c: Lyric
   // 번역된 제목은 글자로 비교할 수 없다. 제목 속 외래어(ロック ↔ 록)가 이어지면 약한 근거로만 인정한다 (상한 0.5, 자동 선택 불가)
   const loan = titleSimilarity < 0.5 ? loanwordScore(song.title, c.title) : { score: 0, matches: [] };
   if (loan.score > titleSimilarity) titleSimilarity = loan.score;
-  // 저장된 곡 제목에는 없는 "Live/Remix/Cover" 같은 표시가 후보에만 있으면 다른 버전일 가능성이 크다
-  const versionMismatch = hasVersionWord(c.title) && !hasVersionWord(song.title);
+  // 별칭이나 높은 점수로도 원곡/다른 버전 차이를 덮어쓰지 않는다 (양방향 비교).
+  const versionMismatch = !lyricsVersionsMatch(song.title, c.title);
   const hasLyrics = Boolean(c.syncedLyrics || c.plainLyrics);
   let confidence = 0.55 * titleSimilarity + 0.3 * artistSimilarity + 0.1 * (c.syncedLyrics ? 1 : 0) + 0.05 * (hasLyrics ? 1 : 0);
   if (versionMismatch) confidence -= 0.15;
@@ -75,7 +76,7 @@ function buildEvidence(
   const t = { exact: "제목 일치", close: "제목 비슷함", alias: "별칭으로 제목 일치", loanword: "제목 일부 일치", unverified: "제목 확인 불가", different: "제목 다름" }[title];
   const a = { exact: "아티스트 일치", close: "아티스트 비슷함", different: "아티스트 다름", unknown: "아티스트 정보 없음" }[artist];
   const level: MatchEvidence["level"] =
-    m.confidence >= AUTO_ACCEPT_CONFIDENCE && m.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE && (!hasArtist || m.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST) ? "high" : m.confidence >= MEDIUM_CONFIDENCE ? "medium" : "low";
+    !m.versionMismatch && m.confidence >= AUTO_ACCEPT_CONFIDENCE && m.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE && (!hasArtist || m.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST) ? "high" : m.confidence >= MEDIUM_CONFIDENCE ? "medium" : "low";
   return { title, artist, level, label: `${a} · ${t}`, notes };
 }
 
@@ -85,6 +86,7 @@ export const LEVEL_LABEL: Record<MatchEvidence["level"], string> = { high: "일�
 /** high confidence: 점수 + 제목/가수 각각의 최소 조건까지 충족해야 사용자 확인 없이 자동 선택한다 */
 export function isAutoAccept(c: ScoredCandidate, songHasArtist: boolean): boolean {
   return (
+    !c.versionMismatch &&
     c.confidence >= AUTO_ACCEPT_CONFIDENCE &&
     c.titleSimilarity >= AUTO_ACCEPT_MIN_TITLE &&
     (!songHasArtist || c.artistSimilarity >= AUTO_ACCEPT_MIN_ARTIST)
@@ -115,19 +117,17 @@ export function isCrossScriptTitleChoice(song: { title: string }, c: ScoredCandi
   return crossScript && c.artistSimilarity >= 0.9 && c.titleSimilarity < 0.5 && !c.versionMismatch;
 }
 
-/** 같은 곡이 LRCLIB 에 길이만 다르게 여러 번 올라와 있는 경우를 하나로 합친다 (싱크 가사가 있는 쪽을 남긴다) */
-export function dedupeCandidates<T extends { title: string; artist: string; syncedLyrics?: string; confidence?: number }>(list: T[]): T[] {
-  const seen = new Map<string, T>();
-  const order: string[] = [];
-  for (const c of list) {
-    const key = `${normalizeText(c.title)}|${normalizeText(c.artist)}`;
-    const cur = seen.get(key);
-    if (!cur) {
-      seen.set(key, c);
-      order.push(key);
-    } else if (!cur.syncedLyrics && c.syncedLyrics) seen.set(key, c);
-  }
-  return order.map((k) => seen.get(k) as T);
+/** Merge only repeat observations of the same provider record and metadata, never different recordings. */
+export function dedupeCandidates<T extends LyricsCandidate>(list: T[]): T[] {
+  const seen = new Set<string>();
+  return list.filter((c) => {
+    if (!c.id || !c.source) return true; // Missing identity is not proof of a duplicate recording.
+    const key = JSON.stringify([c.source, c.id, normalizeText(c.title), normalizeText(c.artist),
+      c.duration ?? null, c.album ?? null, c.syncedLyrics ?? null, c.plainLyrics ?? null]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function summarize(c: ScoredCandidate): CandidateSummary {
