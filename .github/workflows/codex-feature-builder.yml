@@ -1,4 +1,4 @@
-name: Codex feature builder (manual, draft PR only)
+name: Codex feature builder (manual, draft PR)
 
 # Intentionally manual. The repository owner must review the issue number
 # and trigger this workflow. NEVER run untrusted issue bodies on an automatic event.
@@ -100,9 +100,9 @@ jobs:
         run: |
           set -euo pipefail
           # Never propagate workflow/config/database/secret file modifications.
-          git restore --staged --worktree -- .github AGENTS.md wrangler.toml package-lock.json supabase netlify.toml .env.example 2>/dev/null || true
-          git add -N src tests docs public index.html vite.config.ts package.json 2>/dev/null || true
-          git diff --binary -- src tests docs public index.html vite.config.ts package.json > feature.patch
+          git restore --staged --worktree -- .github AGENTS.md wrangler.toml package-lock.json supabase netlify.toml .env.example package.json vite.config.ts index.html workers 2>/dev/null || true
+          git add -N src tests docs public 2>/dev/null || true
+          git diff --binary -- src tests docs public > feature.patch
           if [ ! -s feature.patch ]; then
             echo "::error::Codex did not produce permitted source changes; see its summary."
             exit 1
@@ -116,5 +116,105 @@ jobs:
             feature.patch
           retention-days: 14
 
-  # This workflow intentionally does not create branches remotely, merge, or deploy.
-  # Patch must be independently inspected before applying and opening a draft PR.
+
+
+  validate-patch:
+    needs: build-feature
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout trusted main (no stored credential)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Download Codex patch
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-feature-patch-${{ inputs.issue_number }}
+      - name: Apply restricted patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check feature.patch
+          git apply feature.patch
+          while IFS= read -r path; do
+            case "$path" in
+              src/*|tests/*|docs/*|public/*) ;;
+              *) echo "::error::Unexpected changed file: $path"; exit 1;;
+            esac
+            if [ -L "$path" ]; then echo "::error::Symlink prohibited: $path"; exit 1; fi
+          done < <(git diff --name-only)
+          if [ -z "$(git diff --name-only)" ]; then exit 1; fi
+          if [ "$(wc -c < feature.patch)" -gt 250000 ]; then
+            echo "::error::Patch exceeds size limit"; exit 1
+          fi
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Type check
+        run: npm run typecheck
+      - name: Vite production build (not deployed)
+        run: npm run build
+      - name: Offline regression tests
+        run: npx --yes tsx@4.20.6 --test tests/*.test.ts
+
+  publish-draft-pr:
+    needs: validate-patch
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+    steps:
+      - name: Checkout trusted main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Download validated patch
+        uses: actions/download-artifact@v4
+        with:
+          name: codex-feature-patch-${{ inputs.issue_number }}
+      - name: Validate author, apply patch and create draft PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ inputs.issue_number }}
+          RUN_ID: ${{ github.run_id }}
+          REPOSITORY: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          INVOKER: ${{ github.actor }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$OWNER" != "$INVOKER" ]; then exit 1; fi
+          author=$(gh api "repos/$REPOSITORY/issues/$ISSUE" --jq '.user.login')
+          if [ "$author" != "$OWNER" ]; then exit 1; fi
+          git apply --check feature.patch
+          git apply feature.patch
+          while IFS= read -r path; do
+            case "$path" in
+              src/*|tests/*|docs/*|public/*) ;;
+              *) echo "::error::Prohibited path: $path"; exit 1;;
+            esac
+            if [ -L "$path" ]; then exit 1; fi
+          done < <(git diff --name-only)
+          if [ -z "$(git diff --name-only)" ]; then exit 1; fi
+          branch="codex/issue-${ISSUE}-${RUN_ID}"
+          git switch -c "$branch"
+          git add -- src tests docs public
+          git -c core.hooksPath=/dev/null -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "feat: draft Codex proposal for issue #$ISSUE"
+          git -c credential.helper= -c http.extraheader="AUTHORIZATION: basic $(printf "x-access-token:%s" "$GH_TOKEN" | base64 -w0)" push "https://github.com/$REPOSITORY.git" "HEAD:refs/heads/$branch"
+          printf '%s\n'             '## AI-generated feature proposal (review required)'             ""             "Closes no issue automatically. Requested in #$ISSUE."             ""             'Automated validation completed in a separate, read-only job (typecheck, build, offline tests).'             ""             '**Do not merge without human review.** Merging into main deploys to Cloudflare production.'             'No auth, SQL migration, payment, deployment, or config files were permitted in this patch.'             'Live Cloudflare/Supabase/OBS behavior was NOT tested.'             > /tmp/pr-body.md
+          gh pr create --repo "$REPOSITORY" --base main --head "$branch" --draft             --title "Codex draft: issue #$ISSUE" --body-file /tmp/pr-body.md
+
+  # This workflow NEVER merges a PR, runs Wrangler, or modifies Supabase.
+  # GitHub may not trigger PR workflows for PRs created by GITHUB_TOKEN;
+  # the isolated validation job must pass before a PR is created.
