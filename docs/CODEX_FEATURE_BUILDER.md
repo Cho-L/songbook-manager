@@ -33,5 +33,6 @@
 ## 현재 상태
 - API 과금형 `.github/workflows/codex-feature-builder.yml`은 초안 PR에서 제거했다.
 - GitHub Actions 타입 검사/빌드/로컬 단위 및 SQL 모의 테스트는 준비되어 있다.
-- Codex Cloud 연결과 실제 기능 요청→PR 실행은 아직 시험하지 않았다.
+- Codex 개발 환경 연결, 린트 오류 수정, 테스트, 별도 브랜치 푸시까지 실제 실행했으며 PR #3이 승인 후 `main`에 병합되었다.
+- Codex 환경에서는 GitHub API 프록시 403으로 PR 생성이 막힌 사례가 있었다. 당시 GitHub 연결 도구로 Draft PR #3을 대신 생성했다. 향후에도 Codex 자체 PR 생성 가능 여부는 환경별로 확인해야 한다.
 - ChatGPT 채팅만으로 Codex Cloud 작업이 **자동 트리거되는 연동은 아직 구성하지 않았다.** 당장은 사용자가 Codex에서 직접 작업을 시작하거나 지원되는 기능을 사용해야 한다.
