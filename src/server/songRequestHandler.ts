@@ -21,6 +21,31 @@ export interface SongRequestEnv {
 const MAX_BODY_BYTES = 2048;
 const RPC_TIMEOUT_MS = 8000;
 
+/** Content-Length 대신 실제 바이트를 센다. 최대 2KB만 보관하고 초과하면 남은 스트림을 취소한다. */
+async function readSubmitBody(request: Request): Promise<{ text: string } | { code: "too_large" | "bad_request" }> {
+  if (!request.body) return { text: "" };
+  const reader = request.body.getReader();
+  const bytes = new Uint8Array(MAX_BODY_BYTES);
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return { text: new TextDecoder().decode(bytes.subarray(0, size)) };
+      if (value.byteLength > MAX_BODY_BYTES - size) {
+        // 취소 완료를 기다리지 않는다: 느리거나 고장 난 송신자가 오류 응답을 지연시키지 못하게 한다.
+        void reader.cancel().catch(() => {});
+        return { code: "too_large" };
+      }
+      bytes.set(value, size);
+      size += value.byteLength;
+    }
+  } catch {
+    return { code: "bad_request" }; // 전송 중단/스트림 오류도 기존 입력 오류 형식으로 응답한다.
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export function json(status: number, payload: unknown, extra: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(payload), {
     status,
@@ -149,21 +174,21 @@ export async function handleSongRequests(request: Request, env: SongRequestEnv, 
   // 다른 사이트의 페이지가 시청자 브라우저로 몰래 신청을 보내는 것을 막는다 (Origin 이 있으면 이 사이트여야 함)
   const origin = request.headers.get("Origin");
   if (origin) {
-    let host = "";
+    let requestOrigin = "";
     try {
-      host = new URL(origin).host;
+      requestOrigin = new URL(origin).origin;
     } catch {
       /* 잘못된 Origin */
     }
-    if (host !== url.host) return fail("forbidden");
+    if (requestOrigin !== url.origin) return fail("forbidden");
   }
   if (!(request.headers.get("Content-Type") ?? "").toLowerCase().includes("application/json")) return fail("bad_request");
 
-  const text = await request.text();
-  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) return fail("too_large");
+  const input = await readSubmitBody(request);
+  if ("code" in input) return fail(input.code);
   let body: unknown;
   try {
-    body = JSON.parse(text);
+    body = JSON.parse(input.text);
   } catch {
     return fail("bad_request");
   }
