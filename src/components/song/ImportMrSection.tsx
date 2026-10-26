@@ -109,7 +109,7 @@ export function ImportMrSection({ targets, insufficientCount, onChoicesChange, d
             <Search className="h-3.5 w-3.5" /> MR 자동 검색 ({targets.length}곡)
           </button>
           <p className="text-[11px] text-white/40 mt-1.5 leading-relaxed">
-            곡당 YouTube 검색을 1~2번 해요. 검색 1번은 YouTube API 일일 할당량(기본 1만)에서 100을 쓰기 때문에 하루에 약 100번까지만 검색할 수 있어요.
+            곡당 YouTube 검색을 1~2번 해요. 검색 가능 횟수는 서비스의 YouTube API 프로젝트 할당량과 다른 이용자의 사용량에 따라 달라져요.
             확실한 후보만 자동으로 연결하고, 애매하면 직접 고르게 해요. "가져오기"를 누르기 전에는 아무것도 저장되지 않아요.
           </p>
         </>
