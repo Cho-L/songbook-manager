@@ -22,7 +22,7 @@ jobs:
       - name: Install project dependencies
         run: npm ci
       - name: Install ephemeral SQL test dependency
-        run: npm install --no-save --package-lock=false '@electric-sql/pglite@^0.3.0'
+        run: npm install --no-save --package-lock=false '@electric-sql/pglite@^0.3.0' 'tsx@4.20.6'
       - name: Database migration tests
         run: |
           node tests/sql/song-requests-db.mjs
