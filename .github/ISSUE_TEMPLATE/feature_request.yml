@@ -1,0 +1,42 @@
+name: Feature request for AI implementation
+description: Describe a Songbook Manager change to be implemented on an isolated branch.
+title: "[Feature] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A feature request is a specification, **not** permission to deploy.
+        Changes to `main` automatically deploy to Cloudflare, so release approval is separate.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Desired feature
+      description: Describe what should happen in everyday language.
+      placeholder: "Allow me to drag song requests to reorder them."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should users see? How do we know it works?
+    validations:
+      required: true
+  - type: dropdown
+    id: data
+    attributes:
+      label: Does this change login, database, payments, or user data?
+      options:
+        - "Not sure"
+        - "No"
+        - "Yes — require explicit approval and staging review"
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Release safety
+      options:
+        - label: Do not modify production or merge to main without an explicit release decision.
+          required: true

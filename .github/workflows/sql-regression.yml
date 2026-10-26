@@ -1,0 +1,35 @@
+name: SQL regression (isolated PGlite)
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sql:
+    name: Local-only SQL and RLS regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Install project dependencies
+        run: npm ci
+      - name: Install ephemeral SQL test dependency
+        run: npm install --no-save --package-lock=false '@electric-sql/pglite@^0.3.0' 'tsx@4.20.6'
+      - name: Database migration tests
+        run: |
+          node tests/sql/song-requests-db.mjs
+          node tests/sql/song-requests-v2.test.mjs
+          node tests/sql/song-aliases.test.mjs
+          node tests/sql/overlay-configs.test.mjs
+      - name: Worker-to-PGlite API simulation
+        run: npx --no-install tsx tests/sql/song-requests-api.test.mjs
+      # These tests use in-memory local PGlite only.
+      # No Supabase project, Cloudflare token, live database, or deploy command.
