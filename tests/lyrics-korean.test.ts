@@ -100,9 +100,8 @@ test("제목만 입력 / 가수만 입력", async () => {
 test("검색 확장 단계는 전체 요청 상한 안에서 완료", async () => {
   const p = new FakeLrclib(DB);
   await resolveLyrics(song("꽃길없음", "김세정"), p, { aliasProvider: alias(["Kim Sejeong", "K"], ["A", "B", "C"]) });
-  const extended = p.calls.filter((c) => c.startsWith("q:") || /\|Kim Sejeong$/.test(c)).length;
   assert.ok(p.calls.length <= MAX_TOTAL_REQUESTS, `calls=${p.calls.length}`);
-  assert.ok(extended <= 8);
+  assert.equal(new Set(p.calls).size, p.calls.length, "expansion must not repeat a query");
 });
 
 // ---------------------------------------------------------------- MusicBrainz provider (가짜 fetch)

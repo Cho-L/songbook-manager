@@ -9,10 +9,11 @@ import { learnArtistAliases } from "../lyrics/artist";
 import { deleteEntry, isAutoLyricsEnabled, isExpired, readEntry, writeEntry } from "../lyrics/cache";
 import { LrclibProvider } from "../lyrics/providers/lrclib";
 import { MusicBrainzAliasProvider } from "../lyrics/providers/musicbrainz";
-import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyricsDetailed, searchRanked } from "../lyrics/pipeline";
+import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyricsDetailed, searchRankedDetailed } from "../lyrics/pipeline";
+import { searchRecordingLyrics } from "../lyrics/recordingSearch";
 import { clampWarp, compareDurations, isIdentity, nudgeOffset, warpFromAnchors } from "../lyrics/warp";
 import type { Anchor } from "../lyrics/warp";
-import type { AliasProvider, ArtistCatalog, LyricsProvider, ScoredCandidate, SyncEntry } from "../lyrics/types";
+import type { AliasProvider, ArtistCatalog, LyricsProvider, ScoredCandidate, SyncEntry, LyricsRequestDiagnostic, LyricsRequestObserver, RecordingLyricsResult } from "../lyrics/types";
 
 /** 화면에 보여 줄 자동 가사/싱크 상태 */
 export type AutoStatusKind =
@@ -85,6 +86,7 @@ export function describeStatus(args: {
   if (entry.outcome === "no-sync") return { kind: "no-sync", text: "싱크 정보를 찾지 못해 저장된 가사를 그대로 보여줘요", notes };
   if (entry.outcome === "needs-choice") return { kind: "needs-choice", text: "후보가 여러 개예요 — 맞는 곡을 골라 주세요", notes };
   if (entry.outcome === "mismatch") return { kind: "mismatch", text: "찾은 가사가 저장된 가사와 많이 달라서 적용하지 않았어요", notes };
+  if (entry.discovery?.failures) return { kind: "failed", text: "일부 조회에 실패해 가사 검색을 완료하지 못했어요", notes: [...notes, "가사 미수록으로 판단할 수 없어요. 잠시 후 다시 찾아 주세요."] };
   return { kind: "not-found", text: "현재 연결된 가사 제공자에서 찾지 못했어요", notes: [...notes,
     entry.discovery?.withLyrics ? "가사 후보는 받았지만 같은 곡인지 확인하지 못했어요. 원어·가수·다른 표기를 확인해 주세요." : "검색한 표기로 가사를 받지 못했어요. 다른 표기나 제공자 등록 상태를 확인해 주세요.",
     "사용 권한이 있는 가사나 LRC를 곡 수정 화면에서 직접 입력할 수 있어요. 저장된 LRC는 기존 싱크 보정으로 맞출 수 있어요."] };
@@ -107,6 +109,24 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
   const saveFn = hookOpts.save;
   const mrDurationOpt = hookOpts.mrDuration;
   const [pool, setPool] = useState<ScoredCandidate[]>([]);
+  const [diagnosticsEnabled, setDiagnosticsFlag] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<LyricsRequestDiagnostic[]>([]);
+  const diagnosticsFlag = useRef(false);
+  const diagnosticRequest = useRef(0);
+  const beginDiagnostics = useCallback((): LyricsRequestObserver | undefined => {
+    const id = ++diagnosticRequest.current;
+    if (!diagnosticsFlag.current) return undefined;
+    setDiagnostics([]);
+    return (request) => {
+      if (diagnosticsFlag.current && diagnosticRequest.current === id) setDiagnostics((previous) => [...previous, request].slice(-14));
+    };
+  }, []);
+  const setDiagnosticsEnabled = useCallback((enabled: boolean) => {
+    diagnosticsFlag.current = enabled;
+    setDiagnosticsFlag(enabled);
+    ++diagnosticRequest.current;
+    setDiagnostics([]);
+  }, []);
   const poolRef = useRef<ScoredCandidate[]>([]);
   const [listing, setListing] = useState(false);
   const [applyMsg, setApplyMsg] = useState<{ kind: "ok" | "error"; text: string } | null>(null);
@@ -148,7 +168,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
         const { entry: result, pool: found } = await resolveLyricsDetailed(
           { songId, title, artist, ownLyrics, titleAliases: known.titles, artistAliases: known.artists },
           provider,
-          { candidateId: opts.candidateId, aliasProvider, pool: opts.candidateId ? poolRef.current : undefined }
+          { candidateId: opts.candidateId, aliasProvider, observe: beginDiagnostics(), pool: opts.candidateId ? poolRef.current : undefined }
         );
         if (id !== reqRef.current) return; // 곡이 바뀌었거나 더 새로운 요청이 있음 → 이 결과는 버린다
         poolRef.current = found;
@@ -164,7 +184,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
         if (id === reqRef.current) setSearching(false);
       }
     },
-    [songId, title, artist, ownLyrics, known]
+    [songId, title, artist, ownLyrics, known, beginDiagnostics]
   );
 
   // 곡이 바뀌면: 캐시 확인 → 없거나 무효면 검색
@@ -172,6 +192,8 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     const myReq = ++reqRef.current;
     setError(null);
     setSearching(false);
+    ++diagnosticRequest.current;
+    setDiagnostics([]);
     poolRef.current = [];
     setPool([]);
     setApplyMsg(null);
@@ -220,42 +242,44 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     setListing(true);
     setError(null);
     try {
-      const ranked = await searchRanked({ songId, title, artist, ownLyrics, titleAliases: known.titles, artistAliases: known.artists }, provider, { aliasProvider });
+      const { candidates: ranked, diagnostics: summary } = await searchRankedDetailed({ songId, title, artist, ownLyrics, titleAliases: known.titles, artistAliases: known.artists }, provider, { aliasProvider, observe: beginDiagnostics() });
       poolRef.current = ranked;
       setPool(ranked);
+      if (summary.failures && !ranked.length) setError("일부 조회에 실패해 검색을 완료하지 못했어요. 가사 없음으로 판단할 수 없어요.");
     } catch (e) {
       if (!isAbort(e)) setError(describeLyricsError(e));
     } finally {
       setListing(false);
     }
-  }, [songId, title, artist, ownLyrics, known]);
+  }, [songId, title, artist, ownLyrics, known, beginDiagnostics]);
 
   /**
    * 아티스트 곡 목록(MusicBrainz)에서 사용자가 직접 고른 곡으로 가사 후보를 다시 찾는다 (LRCLIB).
    * 이 곡의 원어 제목·MusicBrainz 가 알려 준 다른 표기로 찾고, 결과를 후보 목록(pool)으로 바꾼다. 자동 선택은 하지 않는다.
-   * 돌려주는 값은 이번 검색에서 나온 후보 id 들 (화면에서 이 후보만 보여 주려고).
+   * 후보 id와 완료/빈 결과/미완료/실패 상태를 함께 돌려줘 오류를 가사 없음으로 표시하지 않는다.
    */
   const searchForRecording = useCallback(
-    async (rec: { title: string; altTitles: string[]; artist: string; artistAliases: string[]; referenceDuration?: number }): Promise<string[]> => {
-      if (!songId) return [];
+    async (rec: { title: string; altTitles: string[]; artist: string; artistAliases: string[]; referenceDuration?: number }): Promise<RecordingLyricsResult> => {
+      if (!songId) return { status: "failed", ids: [], message: "검색할 곡이 없어요" };
       setListing(true);
       setError(null);
       try {
-        const ranked = await searchRanked(
+        const { candidates: ranked, result } = await searchRecordingLyrics(
           { songId, title: rec.title, artist: rec.artist, ownLyrics, titleAliases: rec.altTitles, artistAliases: rec.artistAliases, referenceDuration: rec.referenceDuration },
-          provider
+          provider, beginDiagnostics()
         );
         poolRef.current = ranked;
         setPool(ranked);
-        return ranked.map((c) => c.id);
+        if (result.status === "failed") setError(result.message ?? "가사 검색에 실패했어요");
+        return result;
       } catch (e) {
         if (!isAbort(e)) setError(describeLyricsError(e));
-        return [];
+        return { status: "failed", ids: [], message: isAbort(e) ? "검색을 취소했어요" : describeLyricsError(e) };
       } finally {
         setListing(false);
       }
     },
-    [songId, ownLyrics]
+    [songId, ownLyrics, beginDiagnostics]
   );
 
   const previewOf = useCallback(
@@ -338,6 +362,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
   }, [songId, saveFn]);
 
   return {
+    diagnostics, diagnosticsEnabled, setDiagnosticsEnabled,
     candidates: pool,
     listing,
     loadCandidates,

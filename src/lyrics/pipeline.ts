@@ -4,7 +4,7 @@ import { formatLrc } from "./lrc";
 import { hashText, normalizeText, normalizeTitle } from "./text";
 import { ProviderLyricsSynchronizer } from "./synchronizers";
 import { applyWarp } from "./warp";
-import { LYRICS_SEARCH_REVISION, IDENTITY_WARP, type DiscoverySummary, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
+import { LYRICS_SEARCH_REVISION, IDENTITY_WARP, type DiscoverySummary, type LyricsRequestObserver, type ScoredCandidate, type AliasProvider, type LyricsProvider, type LyricsSynchronizer, type SyncEntry, type Warp } from "./types";
 
 /**
  * 자동 가사 검색 + 싱크 파이프라인 (화면/저장소와 무관한 순수 로직).
@@ -35,6 +35,7 @@ export interface ResolveOptions {
   synchronizer?: LyricsSynchronizer;
   /** 한글 곡이 가사 DB 에 영문 표기로만 있을 때 확인된 별칭을 찾아 주는 곳 (없으면 확장 검색의 별칭 단계는 건너뛴다) */
   aliasProvider?: AliasProvider;
+  observe?: LyricsRequestObserver;
   now?: () => number;
   signal?: AbortSignal;
 }
@@ -69,7 +70,7 @@ export async function resolveLyricsDetailed(
     ranked = opts.pool;
   } else {
     // 단계적 검색(엄격 → 느슨, 별칭, 제목만 검색까지). 네트워크 오류는 그대로 throw → 호출한 쪽이 "실패"로 표시 (캐시하지 않음)
-    const { candidates, aliases, budgetExhausted, diagnostics } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
+    const { candidates, aliases, budgetExhausted, diagnostics } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider, opts.observe);
     ranked = rankCandidates(input, candidates, aliases);
     base.discovery = diagnostics;
     if (diagnostics.failures) base.warnings.push("일부 조회에 실패했어요 — 제공자에 가사가 없다고 단정할 수 없어요");
@@ -183,7 +184,15 @@ export function buildResolvedLyrics(entry: SyncEntry, videoId: string | undefine
 }
 
 /** 후보 목록만 필요할 때(미리보기/선택 UI): 검색 → 점수 → 중복 정리. 자동 선택은 하지 않는다 */
-export async function searchRanked(input: ResolveInput, provider: LyricsProvider, opts: { aliasProvider?: AliasProvider; signal?: AbortSignal } = {}): Promise<ScoredCandidate[]> {
-  const { candidates, aliases } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider);
-  return dedupeCandidates(rankCandidates(input, candidates, aliases));
+export async function searchRankedDetailed(input: ResolveInput, provider: LyricsProvider,
+  opts: { aliasProvider?: AliasProvider; signal?: AbortSignal; observe?: LyricsRequestObserver } = {}
+): Promise<{ candidates: ScoredCandidate[]; diagnostics: DiscoverySummary }> {
+  const { candidates, aliases, diagnostics } = await searchCandidates(provider, input, opts.signal, opts.aliasProvider, opts.observe);
+  return { candidates: dedupeCandidates(rankCandidates(input, candidates, aliases)), diagnostics };
+}
+
+export async function searchRanked(input: ResolveInput, provider: LyricsProvider,
+  opts: { aliasProvider?: AliasProvider; signal?: AbortSignal; observe?: LyricsRequestObserver } = {}
+): Promise<ScoredCandidate[]> {
+  return (await searchRankedDetailed(input, provider, opts)).candidates;
 }

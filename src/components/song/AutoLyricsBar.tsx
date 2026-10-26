@@ -5,6 +5,7 @@ import { describeStatus } from "../../hooks/useAutoLyrics";
 import { setAutoLyricsEnabled } from "../../lyrics/cache";
 import { LyricsCandidatePanel } from "./LyricsCandidatePanel";
 import { ArtistSongBrowser } from "./ArtistSongBrowser";
+import { LyricsSearchDiagnostics } from "./LyricsSearchDiagnostics";
 import { PronunciationPanel } from "./PronunciationPanel";
 import { SYNC_STEP_TENTHS, formatOffset, formatStep, readSyncStep, writeSyncStep } from "../../lyrics/warp";
 
@@ -70,6 +71,9 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
           {n}
         </div>
       ))}
+
+      <LyricsSearchDiagnostics enabled={auto.diagnosticsEnabled ?? false} requests={auto.diagnostics ?? []}
+        onToggle={(enabled) => auto.setDiagnosticsEnabled(enabled)} />
 
       {status.kind === "needs-choice" && auto.entry?.options && (
         <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} ids={auto.entry.options.map((o) => o.id)} />

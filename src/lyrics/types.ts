@@ -61,7 +61,7 @@ export interface LyricsLookupMetadata {
   album?: string;
 }
 
-export const LYRICS_SEARCH_REVISION = 2;
+export const LYRICS_SEARCH_REVISION = 3;
 export interface DiscoverySummary {
   requests: number;
   records: number;
@@ -70,12 +70,31 @@ export interface DiscoverySummary {
   budgetExhausted: boolean;
 }
 
+/** Opt-in, memory-only diagnostics. No URLs, headers, account IDs or lyric bodies. */
+export interface LyricsRequestDiagnostic {
+  endpoint: "search" | "get";
+  title?: string;
+  artist?: string;
+  query?: string;
+  httpStatus?: number;
+  records?: number;
+  cached: boolean;
+  outcome: "results" | "empty" | "not-found" | "error";
+  errorKind?: import("./errors").LyricsErrorKind;
+}
+export type LyricsRequestObserver = (request: LyricsRequestDiagnostic) => void;
+export interface RecordingLyricsResult {
+  status: "found" | "empty" | "incomplete" | "failed";
+  ids: string[];
+  message?: string;
+}
+
 export interface LyricsProvider {
   readonly name: string;
-  search(title: string, artist: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+  search(title: string, artist: string, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]>;
   /** 자유 검색어(제목·가수·앨범 어디든 포함) 검색. 지원하는 provider 만 구현한다 */
-  searchQuery?(query: string, signal?: AbortSignal): Promise<LyricsCandidate[]>;
-  get?(title: string, artist: string, metadata?: LyricsLookupMetadata, signal?: AbortSignal): Promise<LyricsCandidate[]>;
+  searchQuery?(query: string, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]>;
+  get?(title: string, artist: string, metadata?: LyricsLookupMetadata, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]>;
 }
 
 /**
