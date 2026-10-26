@@ -40,3 +40,18 @@ Owner confirmed: **any change merged into GitHub `main` triggers a Cloudflare pr
 
 ## Production safety
 This PR changes **documentation only**. No live requests, credentials, migrations, account settings or deploys performed. Review and merge only as part of an explicitly approved Cloudflare production release because `main` automatically triggers a deploy.
+
+## Follow-up verification — 2026-10-26 (after PR #1 and #3)
+- PR #1 was merged into `main` and added GitHub PR workflows for ESLint, typecheck, Vite build, offline unit tests, and isolated PGlite SQL regressions. **The original CI gap in finding #6 is now partially resolved.** These checks are not live Supabase/RLS or production API checks.
+- PR #3 was merged into `main` and renamed the non-hook `useServer` helper in `src/services/broadcastRepository.ts` to `getAvailableServerDb`. The owner reported normal operation after deployment.
+- Current `main` source still calls `await request.text()` before testing `MAX_BODY_BYTES = 2048` in `src/server/songRequestHandler.ts`. Prioritize a mocked regression test and bounded body reading. Do not claim an exploitable production vulnerability solely from source review.
+- Current `main` `workers/worker.js` still allows public calls to `/api/youtube-search` that use `YOUTUBE_API_KEY`. Rate limits, quota usage and cache behavior have not been verified on Cloudflare. Avoid live load tests.
+- Effective Supabase staging/production grants, Auth isolation and RLS remain unverified in the deployed environment.
+
+### Immediate next work (separate PRs, no production changes without approval)
+1. **SEC-01 — safest first code change:** add offline tests for oversize and malformed song-request POST, invalid UUIDs, missing/mismatched Origin policy, and disallowed methods. If tests expose a concrete issue, implement a bounded request-body reader in a separate small change or in the same clearly reviewed PR; cap the read before allocating the full body. Tests must not contact live Supabase or Cloudflare.
+2. **SEC-02 — quota assessment:** document the YouTube Data API endpoint's quota cost, traffic amplification, potential rate limiting and caching options. Do not enable paid services or alter production API behavior automatically.
+3. **SEC-03 — staging DB validation:** only with separate explicitly approved disposable Supabase project credentials, test effective grants, RLS and RPC isolation. Never execute migrations against production from AI/CI.
+
+### Operational limit
+This is a documentation-only draft PR. It can be reviewed or left pending while SEC-01 work proceeds separately. Merging it into `main` is still an automatic Cloudflare production release and requires a new explicit release approval.
