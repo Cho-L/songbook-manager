@@ -5,13 +5,19 @@ GitHub: https://github.com/Cho-L/songbook-manager
 
 > This document is a checklist, **not** authorization to deploy. Do not merge or deploy automatically.
 
+## Verified deployment policy (owner confirmed 2026-10-26)
+- Cloudflare is connected to this repository and **automatically deploys when `main` changes**.
+- **Merging a PR into `main` is a production release**, not merely a source control action.
+- Do not merge even documentation-only PRs unless explicitly approved, as each merge triggers the production pipeline.
+- GitHub Actions quality-check PR workflow never deploys; keep release approval distinct from green CI.
+
 ## 1. Branch lifecycle
 1. Start from the latest `main` branch. Use a separate `feature/*` or `fix/*` branch.
 2. Open a **draft PR** with description, affected routes, tests, risks and rollback instructions.
 3. Run GitHub Actions quality check (TypeScript and Vite build). If changing core logic also run the applicable tests; green build alone is insufficient.
 4. Review how Supabase Auth/RLS, Worker API endpoints, OBS and lyrics/YouTube flows may be affected.
 5. Mark ready and merge only after the owner explicitly approves the exact release.
-6. Confirm whether Cloudflare's production deployment is linked to the GitHub `main` branch, or uses manual Wrangler deployment. **Not yet verified.**
+6. The owner confirms Cloudflare watches `main` and auto-deploys its changes. Still verify Cloudflare deployment history, preview behavior, and rollback capabilities before the first approved release.
 
 ## 2. Cloudflare deployment path — choose only after verifying project setup
 ### A. Cloudflare Git integration
@@ -56,4 +62,4 @@ GitHub: https://github.com/Cho-L/songbook-manager
 - Historical Netlify configuration is present but is not used as evidence of production routing.
 - GitHub Actions in draft PR #1 only installs dependencies, typechecks and builds; it does **not** deploy.
 - GitHub Actions quality check passed for PR #1's original head commit.
-- Actual Cloudflare dashboard's production branch / Git integration settings remain **unverified**.
+- Owner confirms GitHub `main` auto-deploys to Cloudflare. Actual dashboard settings, preview routing, and rollback procedure have not yet been independently inspected.
