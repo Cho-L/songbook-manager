@@ -1,37 +1,37 @@
-# Codex feature builder — manual feature to Draft PR
+# 송북매니저 — ChatGPT Plus Codex 개발 방식 (추가 API 키 없음)
 
-## Goal
-A repository-owner-authored GitHub Issue is the feature request. The owner manually starts the GitHub Actions workflow with its Issue number. Codex writes source files in a constrained runner. A second, separate read-only job applies only a restricted patch and runs typecheck, build and existing offline tests. A third job, with GitHub write access **but no OpenAI API key**, creates a new branch and **Draft PR only**.
+## 비용 기준
+- ChatGPT Plus에 포함된 Codex 사용량 안에서 작업한다 (플랜 사용 제한 적용).
+- OpenAI Platform API 키 및 API 별도 결제는 요구하지 않는다.
+- GitHub Actions의 기본 제공 사용량/Cloudflare/Supabase의 요금제 한도는 각 플랫폼 조건에 따르며, 초과 또는 유료 기능은 별도 확인한다.
+- 별도 결제나 유료 서비스 도입 전 반드시 소유자에게 알린다.
 
-**Never merge automatically.** Changes to `main` automatically deploy to the live Cloudflare site, as confirmed by the owner.
+## 개발 운영 절차
+1. 소유자가 ChatGPT 또는 Codex에서 원하는 기능을 설명한다.
+2. Codex Cloud에서 ChatGPT 계정으로 로그인한다. GitHub `Cho-L/songbook-manager` 저장소가 있는 클라우드 환경을 연결하거나 구성한다.
+3. 개발 작업은 항상 `main`이 아닌 별도 브랜치에서 진행하고, 작업 결과를 PR로 제안한다.
+4. GitHub Actions의 `Safe quality check` 및 `SQL regression (isolated PGlite)` 결과를 검토한다. 외부 연동/실제 DB 권한 검증과는 다르다.
+5. 요청 기능, 변경 파일, 위험도, 복구 방법 및 미검증 사항을 확인한다.
+6. `main`으로 병합하면 Cloudflare 운영 사이트가 자동 배포되므로, **소유자의 명시적 배포 승인 전에는 병합하지 않는다.**
+7. 배포 뒤 실제 웹/OBS/Supabase 핵심 흐름을 확인한다.
 
-## Prerequisites (one-time)
-1. Review automation PR #1 before explicitly approving merge to `main`. A merge, even of GitHub workflows, triggers a Cloudflare production pipeline.
-2. Create an OpenAI **Platform API** key and add it in GitHub repository Settings → Secrets and variables → Actions → New repository secret with name `OPENAI_API_KEY`. Do not paste the key into issues or chat. API usage is billed separately from ChatGPT subscriptions.
-3. In GitHub repository Settings → Actions → General → Workflow permissions, allow GitHub Actions to create pull requests. This is usually disabled for personal repositories by default. The workflow uses restricted per-job permissions.
-4. First trial: create a harmless Issue authored by the repository owner, using the feature request template. Once the workflow is installed on default branch, open Actions → Codex feature builder → Run workflow, input the Issue number.
-5. Review the produced Draft PR before any merge. Actual external integrations and production Cloudflare/Supabase were **not** tested in this workflow.
+## Codex Cloud 처음 설정
+- ChatGPT 계정으로 Codex에 로그인한다 (API key 로그인 불필요).
+- 새 클라우드 환경에서 `Cho-L/songbook-manager` 저장소를 선택한다.
+- 개발환경에서 `npm ci`, `npm run typecheck`, `npm run build`을 사용할 수 있는지 확인한다.
+- 최초 요청은 비핵심 UI/문구 변경처럼 되돌리기 쉬운 작업으로 진행한다.
+- Codex가 생성한 PR을 검토하고 테스트 결과를 확인한다.
 
-## Automation boundary
-| Job | Privileges | Result |
-|---|---|---|
-| `build-feature` | Repo read, OpenAI key | Codex outputs restricted patch artifact |
-| `validate-patch` | Repo read, **no OpenAI key** | Apply patch; TypeScript, Vite build, offline unit tests |
-| `publish-draft-pr` | Repo write + PR write, **no OpenAI key** | New branch, Draft PR; no test commands or deployments |
+## 안전 규칙
+- GitHub `main` 변경은 Cloudflare 자동 운영 배포다.
+- Cloudflare Worker, 비밀키, Supabase RLS/스키마, Auth, 결제 관련 수정은 별도 검토와 승인 필요.
+- 실제 데이터베이스에 SQL을 자동 실행하지 않는다.
+- 테스트에 운영 키/개인정보를 사용하지 않는다.
+- 실패한 검사를 무시하거나 우회하여 병합하지 않는다.
+- `AGENTS.md`의 별도 브랜치 및 운영 안전 규칙을 따른다.
 
-Allowed patch paths: `src/`, `tests/`, `docs/`, `public/`. Other paths (workflows, migrations, Worker, package scripts, config, env/secrets) are excluded. Symlinks and patches over 250 KB are rejected at validation. This is a best-effort guardrail, not a substitute for code review: permitted source or tests could still be malicious or incorrect.
-
-## Limitations
-- It starts **manually**, not automatically from messages in ChatGPT or every GitHub Issue. Connecting chat-to-issue may be added later.
-- An API key and GitHub workflow settings have not yet been configured or verified by this assistant.
-- The GitHub `GITHUB_TOKEN` that creates the Draft PR normally does **not** trigger additional `pull_request` workflows. The separate validation job must pass first. For fully independent PR checks, configure a scoped GitHub App token in a future approved change.
-- `main` branch protections, the live Cloudflare dashboard and rollback capabilities need owner review before considering automatic merges.
-- Cloudflare branch preview builds may exist; preview routing/secrets are not verified.
-- This workflow never applies SQL to real Supabase, deploys, approves, or merges. Auth, billing, migration, and runtime configuration changes need a different human-approved process.
-
-## Troubleshooting
-- **Missing OPENAI_API_KEY**: register GitHub Actions repository secret.
-- **Cannot create pull request**: check Actions → General → Allow GitHub Actions to create and approve pull requests.
-- **No permitted file changes**: Codex may have produced only a plan or requested a prohibited change; read its output.
-- **Build/test failure**: no PR is created; check logs and retry after adjusting the Issue.
-- **Permission denied on git push**: check repository Actions workflow token policy and branch rules; no bypass or automatic merge.
+## 현재 상태
+- API 과금형 `.github/workflows/codex-feature-builder.yml`은 초안 PR에서 제거했다.
+- GitHub Actions 타입 검사/빌드/로컬 단위 및 SQL 모의 테스트는 준비되어 있다.
+- Codex Cloud 연결과 실제 기능 요청→PR 실행은 아직 시험하지 않았다.
+- ChatGPT 채팅만으로 Codex Cloud 작업이 **자동 트리거되는 연동은 아직 구성하지 않았다.** 당장은 사용자가 Codex에서 직접 작업을 시작하거나 지원되는 기능을 사용해야 한다.
