@@ -1,22 +1,37 @@
-# Codex feature builder — operator guide
+# Codex feature builder — manual feature to Draft PR
 
-## Current state
-This is an **opt-in, manual first milestone** for feature coding. It does not autonomously receive ChatGPT requests, push to GitHub, open a PR, merge, or deploy. The Codex result is an isolated **downloadable patch artifact** for review. The eventual draft-PR creation stage is intentionally held back until its safety checks are tested.
+## Goal
+A repository-owner-authored GitHub Issue is the feature request. The owner manually starts the GitHub Actions workflow with its Issue number. Codex writes source files in a constrained runner. A second, separate read-only job applies only a restricted patch and runs typecheck, build and existing offline tests. A third job, with GitHub write access **but no OpenAI API key**, creates a new branch and **Draft PR only**.
 
-## Preconditions
-1. Merge the automation setup PR into `main` only after explicit release approval. **The owner reports that any merge to `main` triggers Cloudflare production deployment**, even if the change contains only CI config.
-2. In GitHub repository **Settings → Secrets and variables → Actions**, store a newly created OpenAI Platform API key under `OPENAI_API_KEY`. Do not paste it into issues, logs, chat or code. ChatGPT Plus membership is not the API credit balance; API usage is billed separately.
-3. In GitHub Actions, find **Codex feature builder (manual, draft PR only)** → **Run workflow**, enter an existing owner-authored, open Issue number. No pull requests or other users' Issues are accepted.
-4. Review GitHub Actions results. The feature patch is saved as an artifact; do not apply it blindly.
+**Never merge automatically.** Changes to `main` automatically deploy to the live Cloudflare site, as confirmed by the owner.
 
-## Security and limitations
-- Manual trigger only; only GitHub repository owner's username may start it.
-- Source-only patch; automation explicitly discards changes to deployment, credentials, GitHub workflows, and database migration files.
-- Uses `openai/codex-action@v1` with a workspace permission profile. The OpenAI API key is passed to that action, never to repository tests.
-- The artifact is **not** an approved release. Changes need additional checks and a PR before they can be merged. No automatic deploy.
-- GitHub Actions only runs workflows installed in the repository's default branch; this file has not been activated while it remains in a draft PR.
-- The API key and actual Codex execution are **not yet verified**. A real dry run against a harmless, owner-authored issue is required.
-- Treat Issue text as untrusted instructions; the issue-author check is not a substitute for sandboxing and PR review.
+## Prerequisites (one-time)
+1. Review automation PR #1 before explicitly approving merge to `main`. A merge, even of GitHub workflows, triggers a Cloudflare production pipeline.
+2. Create an OpenAI **Platform API** key and add it in GitHub repository Settings → Secrets and variables → Actions → New repository secret with name `OPENAI_API_KEY`. Do not paste the key into issues or chat. API usage is billed separately from ChatGPT subscriptions.
+3. In GitHub repository Settings → Actions → General → Workflow permissions, allow GitHub Actions to create pull requests. This is usually disabled for personal repositories by default. The workflow uses restricted per-job permissions.
+4. First trial: create a harmless Issue authored by the repository owner, using the feature request template. Once the workflow is installed on default branch, open Actions → Codex feature builder → Run workflow, input the Issue number.
+5. Review the produced Draft PR before any merge. Actual external integrations and production Cloudflare/Supabase were **not** tested in this workflow.
 
-## Next milestone
-A separate, reviewed workflow may take a validated source patch, create a draft PR and run required checks. Protect main with branch rules before considering auto-merge, and ensure Cloudflare previews are separate from production.
+## Automation boundary
+| Job | Privileges | Result |
+|---|---|---|
+| `build-feature` | Repo read, OpenAI key | Codex outputs restricted patch artifact |
+| `validate-patch` | Repo read, **no OpenAI key** | Apply patch; TypeScript, Vite build, offline unit tests |
+| `publish-draft-pr` | Repo write + PR write, **no OpenAI key** | New branch, Draft PR; no test commands or deployments |
+
+Allowed patch paths: `src/`, `tests/`, `docs/`, `public/`. Other paths (workflows, migrations, Worker, package scripts, config, env/secrets) are excluded. Symlinks and patches over 250 KB are rejected at validation. This is a best-effort guardrail, not a substitute for code review: permitted source or tests could still be malicious or incorrect.
+
+## Limitations
+- It starts **manually**, not automatically from messages in ChatGPT or every GitHub Issue. Connecting chat-to-issue may be added later.
+- An API key and GitHub workflow settings have not yet been configured or verified by this assistant.
+- The GitHub `GITHUB_TOKEN` that creates the Draft PR normally does **not** trigger additional `pull_request` workflows. The separate validation job must pass first. For fully independent PR checks, configure a scoped GitHub App token in a future approved change.
+- `main` branch protections, the live Cloudflare dashboard and rollback capabilities need owner review before considering automatic merges.
+- Cloudflare branch preview builds may exist; preview routing/secrets are not verified.
+- This workflow never applies SQL to real Supabase, deploys, approves, or merges. Auth, billing, migration, and runtime configuration changes need a different human-approved process.
+
+## Troubleshooting
+- **Missing OPENAI_API_KEY**: register GitHub Actions repository secret.
+- **Cannot create pull request**: check Actions → General → Allow GitHub Actions to create and approve pull requests.
+- **No permitted file changes**: Codex may have produced only a plan or requested a prohibited change; read its output.
+- **Build/test failure**: no PR is created; check logs and retry after adjusting the Issue.
+- **Permission denied on git push**: check repository Actions workflow token policy and branch rules; no bypass or automatic merge.
