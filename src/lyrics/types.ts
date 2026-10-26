@@ -61,7 +61,7 @@ export interface LyricsLookupMetadata {
   album?: string;
 }
 
-export const LYRICS_SEARCH_REVISION = 1;
+export const LYRICS_SEARCH_REVISION = 2;
 export interface DiscoverySummary {
   requests: number;
   records: number;

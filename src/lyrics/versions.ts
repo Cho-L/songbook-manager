@@ -15,24 +15,50 @@ const compact = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 /** Includes recording qualifiers so Live at Tokyo and Live at Osaka are not assumed interchangeable. */
 export function lyricsVersionKey(title: string): string {
   const text = title.normalize("NFKC");
-  const kinds = RULES.filter(([, pattern]) => pattern.test(text)).map(([kind]) => kind);
-  if (!kinds.length && !GENERIC.test(text)) return "original";
   const markers = [...RULES.map(([, p]) => p), GENERIC, EXPLICIT_ORIGINAL];
+  const isMarked = (s: string) => RULES.some(([, p]) => p.test(s)) || GENERIC.test(s);
+  // Version metadata belongs in annotations or suffixes. A word in the actual
+  // title ("Live Forever", "Cover Me") is not itself evidence of a recording version.
+  const annotations = [...text.matchAll(/[([{【]([^\])}】]*)[\])}】]/gu)]
+    .map((m) => m[1]);
+  const bare = text.replace(/[([{【][^\])}】]*[\])}】]/gu, " ").trim();
+  const separated = bare.split(/\s+[-–—|:]\s*/u).slice(1).filter(isMarked);
+  annotations.push(...separated);
+  if (!separated.length) {
+    const positions = markers.flatMap((p) => [...bare.matchAll(new RegExp(p.source, "giu"))].map((m) => m.index));
+    const first = positions.filter((i) => i > 0).sort((a, b) => a - b)[0];
+    if (first !== undefined) {
+      const suffix = bare.slice(first).trim();
+      // Keep ambiguous suffixes conservative, including venue/recording details.
+      annotations.push(GENERIC.test(suffix) ? bare : suffix);
+    } else if (/^live\s+(?:at|in|on|from)\b/iu.test(bare)) {
+      annotations.push(bare);
+    }
+  }
+  const metadata = annotations.join(" ");
+  const kinds = RULES.filter(([, pattern]) => pattern.test(metadata)).map(([kind]) => kind);
+  if (!kinds.length && !GENERIC.test(metadata)) return "original";
   const stripMarkers = (s: string) => markers.reduce((rest, p) => rest.replace(new RegExp(p.source, "giu"), " "), s);
-  const annotations = [...text.matchAll(/[([{【]([^\])}】]*)[\])}】]/gu)].map((m) => m[1]);
-  const bare = text.replace(/[([{【][^\])}】]*[\])}】]/gu, " ");
-  // Include suffix qualifiers when the marker is outside brackets ("Song - Live at Tokyo").
-  const first = markers.map((p) => bare.search(p)).filter((i) => i >= 0).sort((a, b) => a - b)[0];
-  if (first !== undefined) annotations.push(bare.slice(first));
   const details = annotations.map((a) => compact(stripMarkers(a))).filter(Boolean).sort();
   // Only a bare Original/Studio Version label is compatible with an unlabelled original.
-  if (!kinds.length && EXPLICIT_ORIGINAL.test(text) && details.length === 0) return "original";
+  if (!kinds.length && EXPLICIT_ORIGINAL.test(metadata) && details.length === 0) return "original";
   if (!kinds.length) kinds.push("other");
   return JSON.stringify([kinds.sort(), details]);
 }
 
 export function lyricsVersionsMatch(a: string, b: string): boolean {
-  return lyricsVersionKey(a) === lyricsVersionKey(b);
+  if (lyricsVersionKey(a) !== lyricsVersionKey(b)) return false;
+  // An otherwise unannotated leading word can still be an explicit prefix when
+  // removing it yields the other title exactly ("Live Song" versus "Song").
+  // This preserves safety without calling every "Live Forever" a live recording.
+  const prefixes = [...RULES.map(([, p]) => p), GENERIC];
+  const prefixesOtherTitle = (title: string, other: string) => prefixes.some((p) => {
+    const match = p.exec(title.normalize("NFKC"));
+    if (!match || match.index !== 0) return false;
+    const rest = compact(title.normalize("NFKC").slice(match[0].length));
+    return Boolean(rest) && rest === compact(other.normalize("NFKC"));
+  });
+  return !prefixesOtherTitle(a, b) && !prefixesOtherTitle(b, a);
 }
 
 export function hasLyricsVersion(title: string): boolean {

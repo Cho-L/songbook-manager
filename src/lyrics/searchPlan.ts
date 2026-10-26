@@ -162,6 +162,15 @@ export async function searchCandidates(
         input.referenceDuration === undefined ? {} : { duration: input.referenceDuration }, signal))) return done();
       if (stop) return done();
     }
+    // A supplied recording duration can differ from the provider's metadata.
+    // Retry one raw exact pair without that constraint; title/artist/version gates
+    // still apply, and the same global request budget remains in force.
+    if (input.referenceDuration !== undefined) {
+      const key = `get:${JSON.stringify([spelling(input.title), spelling(input.artist), null])}`;
+      if (await run("metadata-get-without-duration", key,
+        () => provider.get!(input.title, input.artist, {}, signal))) return done();
+      if (stop) return done();
+    }
   }
 
   // Free text applies to Japanese/English too, with and without symbol spacing.
