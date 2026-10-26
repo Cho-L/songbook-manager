@@ -211,7 +211,7 @@ jobs:
           git switch -c "$branch"
           git add -- src tests docs public
           git -c core.hooksPath=/dev/null -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m "feat: draft Codex proposal for issue #$ISSUE"
-          git -c credential.helper= -c http.extraheader="AUTHORIZATION: basic $(printf "x-access-token:%s" "$GH_TOKEN" | base64 -w0)" push "https://github.com/$REPOSITORY.git" "HEAD:refs/heads/$branch"
+          git -c credential.helper='!gh auth git-credential' push "https://github.com/$REPOSITORY.git" "HEAD:refs/heads/$branch"
           printf '%s\n'             '## AI-generated feature proposal (review required)'             ""             "Closes no issue automatically. Requested in #$ISSUE."             ""             'Automated validation completed in a separate, read-only job (typecheck, build, offline tests).'             ""             '**Do not merge without human review.** Merging into main deploys to Cloudflare production.'             'No auth, SQL migration, payment, deployment, or config files were permitted in this patch.'             'Live Cloudflare/Supabase/OBS behavior was NOT tested.'             > /tmp/pr-body.md
           gh pr create --repo "$REPOSITORY" --base main --head "$branch" --draft             --title "Codex draft: issue #$ISSUE" --body-file /tmp/pr-body.md
 
