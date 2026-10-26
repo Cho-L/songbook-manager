@@ -27,4 +27,6 @@ jobs:
         run: npm run typecheck
       - name: Build static assets
         run: npm run build
+      - name: Offline unit tests (mocked integrations only)
+        run: npx --yes tsx@4.20.6 --test tests/*.test.ts
       # Deliberately no Cloudflare credentials, secrets, deploy, or database commands.
