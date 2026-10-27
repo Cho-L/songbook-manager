@@ -12,9 +12,26 @@ const GENERIC = /\b(?:ver\.?|version)\b|버전|バージョン/iu;
 const EXPLICIT_ORIGINAL = /\b(?:original|studio)\b|원곡|오리지널|オリジナル/iu;
 const compact = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
 
+/** Separate a cross-script Korean annotation; preserve recording/feature metadata. */
+export function splitTranslatedName(raw: string): { primary: string; aliases: string[] } {
+  const text = raw.normalize("NFKC").trim();
+  const brackets = /[([{【]([^\])}】]*)[\])}】]/gu;
+  const base = text.replace(brackets, " ").trim();
+  if (!/[A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(base) || /\p{Script=Hangul}/u.test(base)) return { primary: text, aliases: [] };
+  const aliases: string[] = [];
+  const primary = text.replace(brackets, (whole, annotation: string) => {
+    const translation = annotation.trim();
+    if (!/\p{Script=Hangul}/u.test(translation) || /[A-Za-z\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u.test(translation) ||
+      RULES.some(([, p]) => p.test(translation)) || GENERIC.test(translation) || EXPLICIT_ORIGINAL.test(translation) || /실황|공연|녹음|편집/gu.test(translation)) return whole;
+    aliases.push(translation);
+    return " ";
+  }).replace(/\s+/gu, " ").trim();
+  return { primary: primary || text, aliases };
+}
+
 /** Includes recording qualifiers so Live at Tokyo and Live at Osaka are not assumed interchangeable. */
 export function lyricsVersionKey(title: string): string {
-  const text = title.normalize("NFKC");
+  const text = splitTranslatedName(title).primary;
   const markers = [...RULES.map(([, p]) => p), GENERIC, EXPLICIT_ORIGINAL];
   const isMarked = (s: string) => RULES.some(([, p]) => p.test(s)) || GENERIC.test(s);
   // Version metadata belongs in annotations or suffixes. A word in the actual
@@ -47,6 +64,8 @@ export function lyricsVersionKey(title: string): string {
 }
 
 export function lyricsVersionsMatch(a: string, b: string): boolean {
+  a = splitTranslatedName(a).primary;
+  b = splitTranslatedName(b).primary;
   if (lyricsVersionKey(a) !== lyricsVersionKey(b)) return false;
   // An otherwise unannotated leading word can still be an explicit prefix when
   // removing it yields the other title exactly ("Live Song" versus "Song").

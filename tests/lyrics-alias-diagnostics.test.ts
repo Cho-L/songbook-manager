@@ -39,7 +39,7 @@ function mb() {
   });
 }
 for (const [title, artist] of [[JP, "神宿"], [BARE, "神宿"], [KO, "카미야도"], [JP, "Kamiyado"], [ROM, "Kamiyado"]]) {
-  test(`fourth MusicBrainz alias KMYD actually discovers ${title} / ${artist}`, async () => {
+  test(`confirmed KMYD alias actually discovers ${title} / ${artist}`, async () => {
     const calls: URL[] = [], diagnostics: LyricsRequestDiagnostic[] = [];
     const p = new LrclibProvider("https://lyrics.invalid", async (target) => {
       const u = new URL(String(target)); calls.push(u);
@@ -112,7 +112,8 @@ test("completed empty response, partial HTTP failure and request budget remain d
   const partial = await searchRecordingLyrics(input(), p);
   assert.equal(partial.result.status, "incomplete");
   assert.match(partial.result.message!, /실패/);
-  const { entry } = await resolveLyricsDetailed(input(), new LrclibProvider("https://lyrics.invalid", async () => ++n === 3 ? Response.json([]) : new Response("", { status: 503 })));
+  n = 0;
+  const { entry } = await resolveLyricsDetailed(input(), new LrclibProvider("https://lyrics.invalid", async () => ++n === 1 ? Response.json([]) : new Response("", { status: 503 })));
   assert.equal(describeStatus({ entry, searching: false, error: null, ownSynced: false, enabled: true }).kind, "failed");
 });
 test("get 404, HTTP 200 empty/records and shared cache have explicit diagnostic outcomes", async () => {

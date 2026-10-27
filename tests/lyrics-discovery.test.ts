@@ -115,10 +115,10 @@ test("partial failures never become an authoritative absence or sticky negative 
   const p = new LrclibProvider("https://lyrics.invalid", async () => ++calls === 1 ? Response.json([]) : new Response("", { status: 503 }));
   const { entry } = await resolveLyricsDetailed(input(), p);
   assert.equal(entry.outcome, "not-found");
-  assert.equal(entry.discovery?.failures, 1);
+  assert.equal(entry.discovery?.failures, 2);
   assert.ok(entry.warnings.some((w) => w.includes("단정")));
   assert.equal(isExpired(entry), true);
-  assert.equal(calls, 2);
+  assert.equal(calls, 3);
 });
 test("plain-only provider response stays plain; original/live 246/251-second recordings remain distinct", async () => {
   const plain = await resolveLyricsDetailed(input(), new LrclibProvider("https://lyrics.invalid", async () => Response.json([{ ...original, syncedLyrics: null }])));

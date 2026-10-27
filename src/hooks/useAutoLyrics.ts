@@ -13,7 +13,7 @@ import { appliesToLyrics, buildResolvedLyrics, getWarp, isEntryValid, resolveLyr
 import { searchRecordingLyrics } from "../lyrics/recordingSearch";
 import { clampWarp, compareDurations, isIdentity, nudgeOffset, warpFromAnchors } from "../lyrics/warp";
 import type { Anchor } from "../lyrics/warp";
-import type { AliasProvider, ArtistCatalog, LyricsProvider, ScoredCandidate, SyncEntry, LyricsRequestDiagnostic, LyricsRequestObserver, RecordingLyricsResult } from "../lyrics/types";
+import type { AliasProvider, ArtistCatalog, LyricsProvider, ScoredCandidate, SyncEntry, LyricsRequestDiagnostic, LyricsRequestObserver, RecordingLyricsResult, LyricsSearchStopReason } from "../lyrics/types";
 
 /** 화면에 보여 줄 자동 가사/싱크 상태 */
 export type AutoStatusKind =
@@ -111,14 +111,18 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
   const [pool, setPool] = useState<ScoredCandidate[]>([]);
   const [diagnosticsEnabled, setDiagnosticsFlag] = useState(false);
   const [diagnostics, setDiagnostics] = useState<LyricsRequestDiagnostic[]>([]);
+  const [diagnosticStopReason, setDiagnosticStopReason] = useState<LyricsSearchStopReason | undefined>();
   const diagnosticsFlag = useRef(false);
   const diagnosticRequest = useRef(0);
   const beginDiagnostics = useCallback((): LyricsRequestObserver | undefined => {
     const id = ++diagnosticRequest.current;
     if (!diagnosticsFlag.current) return undefined;
     setDiagnostics([]);
+    setDiagnosticStopReason(undefined);
     return (request) => {
-      if (diagnosticsFlag.current && diagnosticRequest.current === id) setDiagnostics((previous) => [...previous, request].slice(-14));
+      if (!diagnosticsFlag.current || diagnosticRequest.current !== id) return;
+      if (request.endpoint === "plan") setDiagnosticStopReason(request.stopReason);
+      else setDiagnostics((previous) => [...previous, request].slice(-14));
     };
   }, []);
   const setDiagnosticsEnabled = useCallback((enabled: boolean) => {
@@ -126,6 +130,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     setDiagnosticsFlag(enabled);
     ++diagnosticRequest.current;
     setDiagnostics([]);
+    setDiagnosticStopReason(undefined);
   }, []);
   const poolRef = useRef<ScoredCandidate[]>([]);
   const [listing, setListing] = useState(false);
@@ -194,6 +199,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
     setSearching(false);
     ++diagnosticRequest.current;
     setDiagnostics([]);
+    setDiagnosticStopReason(undefined);
     poolRef.current = [];
     setPool([]);
     setApplyMsg(null);
@@ -362,7 +368,7 @@ export function useAutoLyrics(rawSong: Song | undefined, hookOpts: AutoLyricsOpt
   }, [songId, saveFn]);
 
   return {
-    diagnostics, diagnosticsEnabled, setDiagnosticsEnabled,
+    diagnostics, diagnosticStopReason, diagnosticsEnabled, setDiagnosticsEnabled,
     candidates: pool,
     listing,
     loadCandidates,

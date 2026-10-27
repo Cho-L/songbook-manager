@@ -28,7 +28,7 @@ export class LrclibProvider implements LyricsProvider {
   readonly name = "LRCLIB";
   private baseUrl: string;
   private fetchImpl: typeof fetch;
-  private memo = new Map<string, { at: number; p: Promise<{ candidates: LyricsCandidate[]; status: number }> }>();
+  private memo = new Map<string, { at: number; settled?: boolean; p: Promise<{ candidates: LyricsCandidate[]; status: number }> }>();
   /** 테스트용: 실제로 네트워크를 호출한 횟수 */
   requestCount = 0;
   constructor(baseUrl: string = "https://lrclib.net", fetchImpl: typeof fetch = (...a) => fetch(...a)) {
@@ -77,7 +77,9 @@ export class LrclibProvider implements LyricsProvider {
         this.memo.delete(key);
         throw e;
       });
-      this.memo.set(key, { at: now, p: pending });
+      const record = { at: now, p: pending, settled: false };
+      pending.then(() => { record.settled = true; }, () => {});
+      this.memo.set(key, record);
       if (this.memo.size > CACHE_MAX) this.memo.delete(this.memo.keys().next().value as string);
     }
     const metadata = {
@@ -86,6 +88,7 @@ export class LrclibProvider implements LyricsProvider {
       artist: diagnosticText(url.searchParams.get("artist_name")),
       query: diagnosticText(url.searchParams.get("q")),
       cached,
+      source: cached ? hit!.settled ? "cache" as const : "shared" as const : "network" as const,
     };
     return (signal ? raceAbort(pending, signal) : pending).then(({ candidates, status }) => {
       reportRequest(observe, { ...metadata, httpStatus: status, records: candidates.length,
@@ -109,7 +112,11 @@ export class LrclibProvider implements LyricsProvider {
       throw new LyricsApiError("network", "LRCLIB 연결 실패");
     }
     if (url.pathname === "/api/get" && res.status === 404) return { candidates: [], status: 404 };
-    if (!res.ok) throw classifyHttpStatus("LRCLIB", res.status);
+    if (!res.ok) {
+      const error = classifyHttpStatus("LRCLIB", res.status);
+      error.retryAfterRequested = res.headers.has("Retry-After");
+      throw error;
+    }
     let data: unknown;
     try {
       data = await res.json();

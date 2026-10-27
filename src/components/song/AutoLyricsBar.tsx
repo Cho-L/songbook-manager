@@ -72,7 +72,7 @@ export function AutoLyricsBar({ auto, currentTime, mrDuration, showManage }: Aut
         </div>
       ))}
 
-      <LyricsSearchDiagnostics enabled={auto.diagnosticsEnabled ?? false} requests={auto.diagnostics ?? []}
+      <LyricsSearchDiagnostics enabled={auto.diagnosticsEnabled ?? false} requests={auto.diagnostics ?? []} stopReason={auto.diagnosticStopReason}
         onToggle={(enabled) => auto.setDiagnosticsEnabled(enabled)} />
 
       {status.kind === "needs-choice" && auto.entry?.options && (

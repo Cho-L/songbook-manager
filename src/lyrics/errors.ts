@@ -13,6 +13,8 @@ export type LyricsErrorKind =
 export class LyricsApiError extends Error {
   readonly kind: LyricsErrorKind;
   readonly status?: number;
+  /** Provider requested a cooldown. Do not retain raw response headers. */
+  retryAfterRequested?: boolean;
   constructor(kind: LyricsErrorKind, message: string, status?: number) {
     super(message);
     this.name = "LyricsApiError";

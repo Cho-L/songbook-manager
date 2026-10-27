@@ -6,7 +6,7 @@
 
 /** 같은 가수의 서로 다른 표기 묶음 */
 export const ARTIST_ALIAS_GROUPS: string[][] = [
-  ["神宿", "Kamiyado", "카미야도"],
+  ["神宿", "Kamiyado", "KMYD", "카미야도"],
   ["아이유", "IU", "이지은", "아이유(IU)"],
   ["방탄소년단", "BTS", "Bangtan Boys", "防弾少年団", "防弾少年団 (BTS)"],
   ["김세정", "Kim Sejeong", "Sejeong"],

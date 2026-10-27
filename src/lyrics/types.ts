@@ -61,8 +61,10 @@ export interface LyricsLookupMetadata {
   album?: string;
 }
 
-export const LYRICS_SEARCH_REVISION = 3;
+export const LYRICS_SEARCH_REVISION = 4;
+export type LyricsSearchStopReason = "matched" | "completed" | "rate-limit" | "retry-after" | "server-error-limit" | "server-recovery-limit" | "network" | "invalid" | "unauthorized" | "service-error" | "request-limit" | "aborted";
 export interface DiscoverySummary {
+  stopReason?: LyricsSearchStopReason;
   requests: number;
   records: number;
   withLyrics: number;
@@ -79,10 +81,17 @@ export interface LyricsRequestDiagnostic {
   httpStatus?: number;
   records?: number;
   cached: boolean;
+  source?: "network" | "cache" | "shared";
   outcome: "results" | "empty" | "not-found" | "error";
   errorKind?: import("./errors").LyricsErrorKind;
 }
-export type LyricsRequestObserver = (request: LyricsRequestDiagnostic) => void;
+export interface LyricsSearchConclusion {
+  endpoint: "plan";
+  outcome: "stopped";
+  stopReason: LyricsSearchStopReason;
+}
+export type LyricsDiagnosticEvent = LyricsRequestDiagnostic | LyricsSearchConclusion;
+export type LyricsRequestObserver = (request: LyricsDiagnosticEvent) => void;
 export interface RecordingLyricsResult {
   status: "found" | "empty" | "incomplete" | "failed";
   ids: string[];

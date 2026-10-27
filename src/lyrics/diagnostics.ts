@@ -1,4 +1,4 @@
-import type { LyricsRequestDiagnostic, LyricsRequestObserver } from "./types";
+import type { LyricsDiagnosticEvent, LyricsRequestObserver } from "./types";
 
 /** Only song query metadata is retained, never raw URLs, account data or lyric bodies. */
 export function diagnosticText(value: string | null): string | undefined {
@@ -9,6 +9,6 @@ export function diagnosticText(value: string | null): string | undefined {
     .replace(/[\p{Cc}\p{Cs}]/gu, " ").slice(0, 160);
 }
 
-export function reportRequest(observe: LyricsRequestObserver | undefined, request: LyricsRequestDiagnostic): void {
+export function reportRequest(observe: LyricsRequestObserver | undefined, request: LyricsDiagnosticEvent): void {
   try { observe?.(request); } catch { /* Diagnostics must never change search behavior. */ }
 }
