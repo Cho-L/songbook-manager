@@ -4,7 +4,8 @@ import { getArtistCatalog } from "../../hooks/useAutoLyrics";
 import { describeLyricsError, isAbort } from "../../lyrics/errors";
 import { filterGroups, groupRecordings, type RecordingGroup } from "../../lyrics/catalog";
 import { splitArtists } from "../../lyrics/artist";
-import type { ArtistHit, ArtistRecording } from "../../lyrics/types";
+import type { ArtistHit, ArtistRecording, RecordingLyricsResult } from "../../lyrics/types";
+import { RecordingLyricsFeedback } from "./RecordingLyricsFeedback";
 import { LyricsCandidatePanel } from "./LyricsCandidatePanel";
 
 type Auto = ReturnType<typeof useAutoLyrics>;
@@ -35,7 +36,7 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
   const [err, setErr] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [pickedTitle, setPickedTitle] = useState<string | null>(null);
-  const [resultIds, setResultIds] = useState<string[] | null>(null);
+  const [result, setResult] = useState<RecordingLyricsResult | null>(null);
   const reqRef = useRef(0);
 
   const groups = useMemo(() => groupRecordings(recs), [recs]);
@@ -51,7 +52,7 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
     setErr(null);
     setSelected(null);
     setRecs([]);
-    setResultIds(null);
+    setResult(null);
     try {
       const r = await catalog!.searchArtists(name);
       if (id !== reqRef.current) return;
@@ -84,7 +85,7 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
   function selectArtist(a: ArtistHit): void {
     setSelected(a);
     setFilter("");
-    setResultIds(null);
+    setResult(null);
     setPickedTitle(null);
     setRecs([]);
     setNextOffset(0);
@@ -95,10 +96,10 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
   async function pick(g: RecordingGroup): Promise<void> {
     if (!selected) return;
     setPickedTitle(g.main.title);
-    setResultIds(null);
+    setResult(null);
     const artistAliases = [selected.name, ...selected.aliases.filter((x) => x !== selected.name)];
-    const ids = await auto.searchForRecording({ title: g.main.title, altTitles: g.altTitles, artist: selected.name, artistAliases });
-    setResultIds(ids);
+    const found = await auto.searchForRecording({ title: g.main.title, referenceDuration: g.main.length, altTitles: g.altTitles, artist: selected.name, artistAliases });
+    setResult(found);
   }
 
   return (
@@ -161,7 +162,7 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
                     setBusy(false);
                     setSelected(null);
                     setRecs([]);
-                    setResultIds(null);
+                    setResult(null);
                   }}
                 >
                   다른 가수 고르기
@@ -205,12 +206,8 @@ export function ArtistSongBrowser({ auto, mrDuration }: { auto: Auto; mrDuration
                 “{pickedTitle}” 로 가사를 찾은 결과 — 직접 고른 곡이에요. 미리보기로 가사를 확인하고 적용하세요.
               </div>
               {auto.listing && <div className="text-[12px] opacity-70">가사를 찾는 중이에요...</div>}
-              {resultIds && resultIds.length === 0 && !auto.listing && (
-                <div className="mt-1 text-[12.5px] opacity-70" data-testid="rec-no-lyrics">
-                  가사 서비스에서 이 곡의 가사를 찾지 못했어요. 가사는 직접 입력하거나 수정할 수 있어요.
-                </div>
-              )}
-              {resultIds && resultIds.length > 0 && <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} ids={resultIds} />}
+              {!auto.listing && result && <RecordingLyricsFeedback result={result} />}
+              {result && result.ids.length > 0 && <LyricsCandidatePanel auto={auto} mrDuration={mrDuration} ids={result.ids} />}
             </div>
           )}
         </div>

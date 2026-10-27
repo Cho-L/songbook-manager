@@ -23,6 +23,7 @@ function lrFetch(log: string[]): typeof fetch {
     const q = url.searchParams.get("q"), t = url.searchParams.get("track_name"), a = url.searchParams.get("artist_name");
     log.push(q ? `q:${q}` : `t:${t}|${a ?? ""}`);
     const r = LR.filter((x) => (q ? n(x.trackName + x.artistName).includes(n(q)) : (!t || n(x.trackName) === n(t)) && (!a || n(x.artistName) === n(a))));
+    if (url.pathname === "/api/get") return Response.json(r[0] ?? {}, { status: r.length ? 200 : 404 });
     return new Response(JSON.stringify(r), { status: 200 });
   }) as typeof fetch;
 }
@@ -142,7 +143,7 @@ test("MusicBrainz 오류는 검색 자체를 막지 않지만 곡 목록 조회�
   const bad = new MusicBrainzAliasProvider("https://m", (async () => new Response("x", { status: 503 })) as unknown as typeof fetch);
   await assert.rejects(() => bad.browseRecordings("va", 0), /503/);
   await assert.rejects(() => bad.searchArtists("Vaundy"));
-  assert.deepEqual(await bad.lookup("Odoriko", "Vaundy"), { artists: [], titles: [] });
+  assert.deepEqual(await bad.lookup("Odoriko", "Vaundy"), { artists: [], titles: [], lookupUnavailable: true });
 });
 
 test("요청 간격(throttle): minGapMs 를 주면 요청 사이에 간격을 둔다", async () => {

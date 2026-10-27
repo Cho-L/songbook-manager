@@ -1,6 +1,6 @@
 /** 한국어/영어 모두에 쓸 수 있는 가벼운 텍스트 비교 유틸 (외부 라이브러리 없음) */
 
-const VERSION_WORDS = /\b(live|remix|acoustic|instrumental|inst\.?|cover|mr|ver\.?|version|karaoke)\b|라이브|리믹스|어쿠스틱|커버|반주|노래방/i;
+import { hasLyricsVersion } from "./versions";
 
 import { crossScriptSimilarity, hasHangul, hasLatin } from "./phonetic";
 
@@ -33,7 +33,7 @@ export function normalizeTitle(s: string): string {
 }
 
 export function hasVersionWord(s: string): boolean {
-  return VERSION_WORDS.test(s);
+  return hasLyricsVersion(s);
 }
 
 function bigrams(s: string): Map<string, number> {
@@ -85,6 +85,14 @@ export const nameSimilarity = titleSimilarityScore;
 export function queryTitle(s: string): string {
   const t = s.replace(/[([{（【][^)\]}）】]*[)\]}）】]/g, " ").replace(/[\s.!?~,·]+$/g, "").replace(/\s+/g, " ").trim();
   return t || s.trim();
+}
+
+/** Provider queries preserve raw spelling first, then try symbol/spacing alternatives (never invent translations). */
+export function lyricsQueryVariants(raw: string): string[] {
+  const clean = (s: string) => s.normalize("NFKC").replace(/\s+/gu, " ").trim();
+  const base = clean(raw);
+  const values = [base, clean(base.replace(/[\p{P}\p{S}]+/gu, " ")), clean(base.replace(/[\p{P}\p{S}]+/gu, "")), clean(queryTitle(base))];
+  return [...new Set(values.filter((s) => /[\p{L}\p{N}]/u.test(s)))].slice(0, 4);
 }
 
 /** FNV-1a 32bit — 캐시 무효화용 짧은 해시 (보안 용도 아님) */

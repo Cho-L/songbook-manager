@@ -1,3 +1,4 @@
+import { splitTranslatedName } from "../lyrics/versions";
 import type { Song } from "../types/song";
 import { ARTIST_ALIAS_GROUPS, TITLE_ALIAS_ENTRIES } from "../data/aliasSeed";
 import { normalizeForSearch } from "./searchNormalize";
@@ -46,14 +47,24 @@ export function artistAliasesOf(artist: string): string[] {
 
 /** 이 곡의 제목/가수 별칭 = 곡에 직접 입력한 별칭 + 기본 사전(제목은 가수가 맞을 때만) */
 export function getSongAliases(song: Pick<Song, "title" | "artist" | "titleAliases" | "artistAliases">): SongAliases {
-  const artistAliases = uniq([...(song.artistAliases ?? []), ...artistAliasesOf(song.artist ?? "")]);
-  const artistKeys = new Set([song.artist, ...artistAliases].map((a) => normalizeForSearch(a)));
+  const title = splitTranslatedName(song.title);
+  const artist = splitTranslatedName(song.artist ?? "");
+  const artistAliases = uniq([...(song.artistAliases ?? []), ...artistAliasesOf(artist.primary), ...artist.aliases]);
+  const artistKeys = new Set([artist.primary, ...artistAliases].map((a) => normalizeForSearch(a)));
   const seedTitles: string[] = [];
-  for (const hit of TITLE_INDEX.get(normalizeForSearch(song.title)) ?? []) {
+  for (const hit of TITLE_INDEX.get(normalizeForSearch(title.primary)) ?? []) {
     const artistOk = !hit.artistKey || [...artistKeys].some((k) => ARTIST_INDEX.get(k)?.some((n) => normalizeForSearch(n) === hit.artistKey));
     if (artistOk) seedTitles.push(...hit.titles);
   }
-  const titles = uniq([...(song.titleAliases ?? []), ...seedTitles]).filter((t) => normalizeForSearch(t) !== normalizeForSearch(song.title));
+  // Preserve symbol spellings for provider lookup even when browse-search normalization considers them equal.
+  const spelling = (s: string) => s.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").trim();
+  const seenTitles = new Set<string>([spelling(song.title)]);
+  const titles = [...(title.primary !== song.title ? [title.primary] : []), ...(song.titleAliases ?? []), ...title.aliases, ...seedTitles].filter((t) => {
+    const key = spelling(t);
+    if (!key || seenTitles.has(key)) return false;
+    seenTitles.add(key);
+    return true;
+  });
   return { titles, artists: artistAliases };
 }
 

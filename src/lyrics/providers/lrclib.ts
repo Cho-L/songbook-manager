@@ -1,6 +1,7 @@
 import { LyricsApiError, classifyHttpStatus, isAbort } from "../errors";
+import { diagnosticText, reportRequest } from "../diagnostics";
 import { parseLrc } from "../lrc";
-import type { LyricsCandidate, LyricsProvider } from "../types";
+import type { LyricsCandidate, LyricsProvider, LyricsLookupMetadata, LyricsRequestObserver } from "../types";
 
 /** 같은 검색을 짧은 시간 안에 반복하지 않는다 (진행 중인 요청 공유 + 성공 결과 5분 보관) */
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -27,7 +28,7 @@ export class LrclibProvider implements LyricsProvider {
   readonly name = "LRCLIB";
   private baseUrl: string;
   private fetchImpl: typeof fetch;
-  private memo = new Map<string, { at: number; p: Promise<LyricsCandidate[]> }>();
+  private memo = new Map<string, { at: number; settled?: boolean; p: Promise<{ candidates: LyricsCandidate[]; status: number }> }>();
   /** 테스트용: 실제로 네트워크를 호출한 횟수 */
   requestCount = 0;
   constructor(baseUrl: string = "https://lrclib.net", fetchImpl: typeof fetch = (...a) => fetch(...a)) {
@@ -35,36 +36,73 @@ export class LrclibProvider implements LyricsProvider {
     this.fetchImpl = fetchImpl;
   }
 
-  async search(title: string, artist: string, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+  async search(title: string, artist: string, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]> {
     const url = new URL("/api/search", this.baseUrl);
     url.searchParams.set("track_name", title);
     if (artist.trim()) url.searchParams.set("artist_name", artist);
-    return this.fetchCandidates(url, signal);
+    return this.fetchCandidates(url, signal, observe);
   }
 
   /** GET /api/search?q=… — 제목/가수/앨범 어디에 있든 찾는다. 제목이 한글/영문 중 어느 쪽으로 등록됐는지 모를 때의 보조 수단 */
-  async searchQuery(query: string, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+  async searchQuery(query: string, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]> {
     const url = new URL("/api/search", this.baseUrl);
     url.searchParams.set("q", query);
-    return this.fetchCandidates(url, signal);
+    return this.fetchCandidates(url, signal, observe);
   }
 
-  private fetchCandidates(url: URL, signal?: AbortSignal): Promise<LyricsCandidate[]> {
+  /** Exact metadata lookup bypasses the search index. Album/duration are optional in the public provider implementation. */
+  async get(title: string, artist: string, metadata: LyricsLookupMetadata = {}, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]> {
+    if (!title.trim() || !artist.trim() || (metadata.duration !== undefined &&
+      (!Number.isFinite(metadata.duration) || metadata.duration < 1 || metadata.duration > 3600))) {
+      throw new LyricsApiError("client", "LRCLIB 조회 metadata 오류");
+    }
+    const url = new URL("/api/get", this.baseUrl);
+    url.searchParams.set("track_name", title);
+    url.searchParams.set("artist_name", artist);
+    if (metadata.album?.trim()) url.searchParams.set("album_name", metadata.album.trim());
+    if (metadata.duration !== undefined) url.searchParams.set("duration", String(metadata.duration));
+    return this.fetchCandidates(url, signal, observe);
+  }
+
+  private fetchCandidates(url: URL, signal?: AbortSignal, observe?: LyricsRequestObserver): Promise<LyricsCandidate[]> {
+    if (signal?.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"));
     const key = url.toString();
     const now = Date.now();
     const hit = this.memo.get(key);
-    if (hit && now - hit.at < CACHE_TTL_MS) return hit.p;
-    // 요청이 취소(AbortSignal)되어도 다른 호출자가 같은 요청을 기다릴 수 있으므로 공유 요청에는 signal 을 넘기지 않고, 호출자 쪽에서만 취소를 반영한다.
-    const p = this.doFetch(url).catch((e) => {
-      this.memo.delete(key); // 실패는 보관하지 않는다
+    const cached = Boolean(hit && now - hit.at < CACHE_TTL_MS);
+    let pending = cached ? hit!.p : undefined;
+    if (!pending) {
+      // Share the transport, but cancellation and diagnostics belong to each caller.
+      pending = this.doFetch(url).catch((e) => {
+        this.memo.delete(key);
+        throw e;
+      });
+      const record = { at: now, p: pending, settled: false };
+      pending.then(() => { record.settled = true; }, () => {});
+      this.memo.set(key, record);
+      if (this.memo.size > CACHE_MAX) this.memo.delete(this.memo.keys().next().value as string);
+    }
+    const metadata = {
+      endpoint: url.pathname === "/api/get" ? "get" as const : "search" as const,
+      title: diagnosticText(url.searchParams.get("track_name")),
+      artist: diagnosticText(url.searchParams.get("artist_name")),
+      query: diagnosticText(url.searchParams.get("q")),
+      cached,
+      source: cached ? hit!.settled ? "cache" as const : "shared" as const : "network" as const,
+    };
+    return (signal ? raceAbort(pending, signal) : pending).then(({ candidates, status }) => {
+      reportRequest(observe, { ...metadata, httpStatus: status, records: candidates.length,
+        outcome: status === 404 ? "not-found" : candidates.length ? "results" : "empty" });
+      return candidates;
+    }, (e) => {
+      if (!isAbort(e)) reportRequest(observe, { ...metadata, outcome: "error",
+        httpStatus: e instanceof LyricsApiError ? e.status : undefined,
+        errorKind: e instanceof LyricsApiError ? e.kind : "network" });
       throw e;
     });
-    this.memo.set(key, { at: now, p });
-    if (this.memo.size > CACHE_MAX) this.memo.delete(this.memo.keys().next().value as string);
-    return signal ? raceAbort(p, signal) : p;
   }
 
-  private async doFetch(url: URL): Promise<LyricsCandidate[]> {
+  private async doFetch(url: URL): Promise<{ candidates: LyricsCandidate[]; status: number }> {
     this.requestCount++;
     let res: Response;
     try {
@@ -73,16 +111,30 @@ export class LrclibProvider implements LyricsProvider {
       if (isAbort(e)) throw e;
       throw new LyricsApiError("network", "LRCLIB 연결 실패");
     }
-    if (!res.ok) throw classifyHttpStatus("LRCLIB", res.status);
+    if (url.pathname === "/api/get" && res.status === 404) return { candidates: [], status: 404 };
+    if (!res.ok) {
+      const error = classifyHttpStatus("LRCLIB", res.status);
+      error.retryAfterRequested = res.headers.has("Retry-After");
+      throw error;
+    }
     let data: unknown;
     try {
       data = await res.json();
     } catch {
-      throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류");
+      throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류", res.status);
     }
-    if (!Array.isArray(data)) return [];
+    if (url.pathname === "/api/get" && (!data || typeof data !== "object" || Array.isArray(data))) {
+      throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류", res.status);
+    }
+    const records = url.pathname === "/api/get" && data && typeof data === "object" && !Array.isArray(data) ? [data] : data;
+    if (!Array.isArray(records)) throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류", res.status);
     const out: LyricsCandidate[] = [];
-    for (const r of data as LrclibRecord[]) {
+    for (const value of records) {
+      if (!value || typeof value !== "object") throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류", res.status);
+      const r = value as LrclibRecord;
+      if (typeof (r.trackName ?? r.name) !== "string" || (r.artistName != null && typeof r.artistName !== "string")) {
+        throw new LyricsApiError("invalid", "LRCLIB 응답 형식 오류", res.status);
+      }
       const title = (r.trackName ?? r.name ?? "").trim();
       if (!title) continue;
       // 시간 태그가 실제로 읽히는 싱크 가사만 "싱크 있음"으로 인정한다 (빈 문자열/깨진 LRC 를 싱크 가사로 보여 주지 않는다)
@@ -94,14 +146,14 @@ export class LrclibProvider implements LyricsProvider {
         title,
         artist: (r.artistName ?? "").trim(),
         album: r.albumName ?? undefined,
-        duration: typeof r.duration === "number" && r.duration > 0 ? r.duration : undefined,
+        duration: typeof r.duration === "number" && Number.isFinite(r.duration) && r.duration > 0 ? r.duration : undefined,
         instrumental: Boolean(r.instrumental),
         plainLyrics: plain,
         syncedLyrics: synced,
         source: this.name,
       });
     }
-    return out;
+    return { candidates: out, status: res.status };
   }
 }
 

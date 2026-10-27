@@ -103,7 +103,8 @@ test("검색 횟수 상한과 중복 요청 제거", async () => {
   await resolveLyricsDetailed({ ...KO, titleAliases: many, artistAliases: many }, never);
   assert.ok(calls.length <= MAX_TOTAL_REQUESTS, `요청 ${calls.length}회`);
   assert.equal(new Set(calls).size, calls.length, "같은 검색어를 두 번 보내지 않는다");
-  assert.ok(buildSearchPlan("a", "b", { titles: many, artists: many }).length <= 7 + 6);
+  const plan = buildSearchPlan("a", "b", { titles: many, artists: many });
+  assert.ok(plan.some((step) => step.artist === many.at(-1)), "later confirmed aliases remain eligible within the runtime budget");
 });
 
 test("외부 서비스 오류를 분류한다 (429/5xx/네트워크/응답 형식)", async () => {

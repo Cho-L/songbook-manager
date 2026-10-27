@@ -6,6 +6,7 @@
 
 /** 같은 가수의 서로 다른 표기 묶음 */
 export const ARTIST_ALIAS_GROUPS: string[][] = [
+  ["神宿", "Kamiyado", "KMYD", "카미야도"],
   ["아이유", "IU", "이지은", "아이유(IU)"],
   ["방탄소년단", "BTS", "Bangtan Boys", "防弾少年団", "防弾少年団 (BTS)"],
   ["김세정", "Kim Sejeong", "Sejeong"],
@@ -51,6 +52,8 @@ export interface TitleAliasEntry {
   artist?: string;
 }
 export const TITLE_ALIAS_ENTRIES: TitleAliasEntry[] = [
+  // Spellings supplied in Issue #10; this metadata is not evidence of LRCLIB lyric availability.
+  { artist: "神宿", titles: ["グリズリーに襲われたら♡", "グリズリーに襲われたら", "Grizzly ni Osowaretara", "그리즐리에게 습격당한다면"] },
   { artist: "아이유", titles: ["이름에게", "Dear Name"] },
   { artist: "아이유", titles: ["밤편지", "Through the Night"] },
   { artist: "아이유", titles: ["좋은 날", "Good Day"] },
